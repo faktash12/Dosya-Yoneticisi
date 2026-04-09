@@ -1,6 +1,6 @@
 import type {StorageProviderScope} from '@/domain/entities/FileSystemNode';
 
-export type ExplorerMode = 'dashboard' | 'directory' | 'placeholder';
+export type ExplorerMode = 'home' | 'browser' | 'placeholder';
 
 export type ExplorerCategoryId =
   | 'internal-storage'
@@ -17,6 +17,8 @@ export type ExplorerCategoryId =
   | 'apps'
   | 'recent';
 
+export type ExplorerHomeEntryId = ExplorerCategoryId | 'sd-card';
+
 export type ExplorerPlaceholderKind =
   | 'system-info'
   | 'cloud-hub'
@@ -29,6 +31,7 @@ export type ExplorerPlaceholderKind =
 
 export type ExplorerDashboardIcon =
   | 'storage'
+  | 'sd-card'
   | 'system'
   | 'downloads'
   | 'images'
@@ -80,6 +83,23 @@ export type ExplorerCategoryAction =
 export interface ExplorerDashboardItem {
   id: string;
   categoryId: ExplorerCategoryId;
+  title: string;
+  subtitle: string;
+  icon: ExplorerDashboardIcon;
+}
+
+export interface ExplorerStorageCardItem {
+  id: ExplorerHomeEntryId;
+  title: string;
+  subtitle: string;
+  usedLabel: string;
+  totalLabel: string;
+  usageRatio: number;
+  icon: Extract<ExplorerDashboardIcon, 'storage' | 'sd-card' | 'downloads'>;
+}
+
+export interface ExplorerShortcutItem {
+  id: ExplorerHomeEntryId;
   title: string;
   subtitle: string;
   icon: ExplorerDashboardIcon;

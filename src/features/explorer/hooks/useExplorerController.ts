@@ -31,8 +31,8 @@ export const useExplorerController = () => {
   const setErrorMessage = useExplorerStore(state => state.setErrorMessage);
   const toggleSelection = useExplorerStore(state => state.toggleSelection);
   const clearSelection = useExplorerStore(state => state.clearSelection);
-  const openDashboard = useExplorerStore(state => state.openDashboard);
-  const openDirectory = useExplorerStore(state => state.openDirectory);
+  const openHome = useExplorerStore(state => state.openHome);
+  const openBrowser = useExplorerStore(state => state.openBrowser);
   const openPlaceholder = useExplorerStore(state => state.openPlaceholder);
 
   const handleLoadError = useEffectEvent((error: unknown) => {
@@ -59,7 +59,7 @@ export const useExplorerController = () => {
   });
 
   useEffect(() => {
-    if (mode !== 'directory') {
+    if (mode !== 'browser') {
       setLoading(false);
       setErrorMessage(null);
       return;
@@ -114,7 +114,7 @@ export const useExplorerController = () => {
 
       if (node.kind === 'directory') {
         clearSelection();
-        openDirectory(node.path);
+        openBrowser(node.path);
         return;
       }
 
@@ -137,7 +137,7 @@ export const useExplorerController = () => {
         data: {nodeId: node.id, path: node.path},
       });
     },
-    [clearSelection, openDirectory, openPlaceholder],
+    [clearSelection, openBrowser, openPlaceholder],
   );
 
   const goBack = useCallback(() => {
@@ -148,36 +148,36 @@ export const useExplorerController = () => {
 
     if (mode === 'placeholder') {
       if (placeholderView?.kind === 'file-preview') {
-        openDirectory(currentPath, {
+        openBrowser(currentPath, {
           categoryId: activeDirectoryCategoryId,
           emptyState: activeEmptyState,
         });
         return;
       }
 
-      openDashboard();
+      openHome();
       return;
     }
 
-    if (mode !== 'directory') {
+    if (mode !== 'browser') {
       return;
     }
 
     if (currentPath === ROOT_DIRECTORY) {
-      openDashboard();
+      openHome();
       return;
     }
 
     clearSelection();
-    openDirectory(getParentPath(currentPath));
+    openBrowser(getParentPath(currentPath));
   }, [
     activeDirectoryCategoryId,
     activeEmptyState,
     clearSelection,
     currentPath,
     mode,
-    openDashboard,
-    openDirectory,
+    openBrowser,
+    openHome,
     placeholderView?.kind,
   ]);
 
@@ -186,7 +186,7 @@ export const useExplorerController = () => {
     [toggleSelection],
   );
 
-  const openDirectoryPath = useCallback(
+  const openBrowserPath = useCallback(
     (path: string, context?: ExplorerDirectoryContext | null) => {
       void appDiagnostics.recordBreadcrumb(
         'Explorer',
@@ -197,9 +197,9 @@ export const useExplorerController = () => {
         },
       );
       clearSelection();
-      openDirectory(path, context);
+      openBrowser(path, context);
     },
-    [clearSelection, openDirectory],
+    [clearSelection, openBrowser],
   );
 
   const openPlaceholderView = useCallback(
@@ -227,9 +227,9 @@ export const useExplorerController = () => {
       selectedNodeIds,
       activeDirectoryCategoryId,
       activeEmptyState,
-      canGoBack: mode !== 'dashboard',
-      openDashboard,
-      openDirectoryPath,
+      canGoBack: mode !== 'home',
+      openHome,
+      openBrowserPath,
       openPlaceholderView,
       openNode,
       goBack,
@@ -247,8 +247,8 @@ export const useExplorerController = () => {
       isLoading,
       mode,
       nodes,
-      openDashboard,
-      openDirectoryPath,
+      openBrowserPath,
+      openHome,
       openNode,
       openPlaceholderView,
       placeholderView,

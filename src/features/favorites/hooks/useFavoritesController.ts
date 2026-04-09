@@ -48,7 +48,7 @@ export const useFavoritesController = () => {
       explorerState.clearSelection();
 
       if (item.kind === 'directory') {
-        explorerState.openDirectory(item.path);
+        explorerState.openBrowser(item.path);
       } else {
         explorerState.openPlaceholder({
           id: `favorite-file-${item.id}`,

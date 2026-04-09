@@ -27,8 +27,8 @@ interface ExplorerState {
   clipboard: ClipboardState | null;
   isLoading: boolean;
   errorMessage: string | null;
-  openDashboard: () => void;
-  openDirectory: (path: string, context?: ExplorerDirectoryContext | null) => void;
+  openHome: () => void;
+  openBrowser: (path: string, context?: ExplorerDirectoryContext | null) => void;
   openPlaceholder: (placeholderView: ExplorerPlaceholderView) => void;
   setCurrentPath: (path: string) => void;
   setNodes: (nodes: FileSystemNode[]) => void;
@@ -43,7 +43,7 @@ const createDirectoryState = (
   currentPath: string,
   context?: ExplorerDirectoryContext | null,
 ) => ({
-  mode: 'directory' as const,
+  mode: 'browser' as const,
   currentPath,
   placeholderView: null,
   nodes: [],
@@ -55,7 +55,7 @@ const createDirectoryState = (
 });
 
 export const useExplorerStore = create<ExplorerState>(set => ({
-  mode: 'dashboard',
+  mode: 'home',
   currentPath: ROOT_DIRECTORY,
   placeholderView: null,
   nodes: [],
@@ -65,9 +65,9 @@ export const useExplorerStore = create<ExplorerState>(set => ({
   clipboard: null,
   isLoading: false,
   errorMessage: null,
-  openDashboard: () =>
+  openHome: () =>
     set({
-      mode: 'dashboard',
+      mode: 'home',
       currentPath: ROOT_DIRECTORY,
       placeholderView: null,
       nodes: [],
@@ -77,7 +77,7 @@ export const useExplorerStore = create<ExplorerState>(set => ({
       errorMessage: null,
       isLoading: false,
     }),
-  openDirectory: (currentPath, context) => set(createDirectoryState(currentPath, context)),
+  openBrowser: (currentPath, context) => set(createDirectoryState(currentPath, context)),
   openPlaceholder: placeholderView =>
     set(state => ({
       mode: 'placeholder',

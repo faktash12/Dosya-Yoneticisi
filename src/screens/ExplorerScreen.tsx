@@ -7,11 +7,9 @@ import {
   ScrollView,
   View,
 } from 'react-native';
-import {useFocusEffect, useNavigation} from '@react-navigation/native';
-import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
+import {useFocusEffect} from '@react-navigation/native';
 
 import {appContainer} from '@/app/di/container';
-import type {MainTabParamList} from '@/app/navigation/types';
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
 import {EmptyState} from '@/components/feedback/EmptyState';
@@ -26,13 +24,11 @@ import {FileListItem} from '@/features/explorer/components/FileListItem';
 import {StorageAccessPrompt} from '@/features/explorer/components/StorageAccessPrompt';
 import {useExplorerController} from '@/features/explorer/hooks/useExplorerController';
 import {useExplorerOperations} from '@/features/explorer/hooks/useExplorerOperations';
-import type {ExplorerDashboardItem} from '@/features/explorer/types/explorer.types';
+import type {ExplorerHomeEntryId} from '@/features/explorer/types/explorer.types';
 import {
-  createQuickActionPlaceholder,
   createUnsupportedCategoryPlaceholder,
   resolveExplorerCategoryAction,
 } from '@/features/explorer/view-models/explorerCategoryActionResolver';
-import {explorerDashboardItems} from '@/features/explorer/view-models/explorerDashboardItems';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {
@@ -48,7 +44,6 @@ const genericDirectoryEmptyState = {
 };
 
 export const ExplorerScreen = (): React.JSX.Element => {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const theme = useAppTheme();
   const explorer = useExplorerController();
   const operations = useExplorerOperations();
@@ -112,7 +107,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
   useFocusEffect(
     useCallback(() => {
       const onHardwareBackPress = () => {
-        if (explorer.mode !== 'dashboard') {
+        if (explorer.mode !== 'home') {
           explorer.goBack();
           return true;
         }
@@ -148,21 +143,19 @@ export const ExplorerScreen = (): React.JSX.Element => {
     refreshDiagnostics,
   ]);
 
-  const handleDashboardItemPress = useCallback(
-    (item: ExplorerDashboardItem) => {
-      setLastUserAction(`Dashboard kartı: ${item.title}`);
-      void appDiagnostics.recordBreadcrumb('ExplorerDashboard', 'Item pressed', {
-        itemId: item.id,
-        itemTitle: item.title,
-        categoryId: item.categoryId,
+  const handleHomeEntryPress = useCallback(
+    (entryId: ExplorerHomeEntryId) => {
+      setLastUserAction(`Ana ekran girişi: ${entryId}`);
+      void appDiagnostics.recordBreadcrumb('ExplorerDashboard', 'Home entry pressed', {
+        entryId,
       });
 
       try {
         setInteractionError(null);
-        const action = resolveExplorerCategoryAction(item.categoryId);
+        const action = resolveExplorerCategoryAction(entryId);
 
         if (action.kind === 'directory') {
-          explorer.openDirectoryPath(action.path, {
+          explorer.openBrowserPath(action.path, {
             categoryId: action.categoryId,
             emptyState: action.emptyState,
           });
@@ -172,63 +165,19 @@ export const ExplorerScreen = (): React.JSX.Element => {
         explorer.openPlaceholderView(action.placeholder);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Kategori açma aksiyonu başarısız';
+          error instanceof Error ? error.message : 'Ana ekran girişi açılamadı';
 
         setInteractionError(message);
         setLastUserAction(`Dashboard hata: ${message}`);
         void appDiagnostics.recordError('ExplorerDashboard', error, {
-          itemId: item.id,
-          categoryId: item.categoryId,
+          entryId,
         });
         explorer.openPlaceholderView(
-          createUnsupportedCategoryPlaceholder(item.title, message),
+          createUnsupportedCategoryPlaceholder(entryId, message),
         );
       }
     },
     [explorer],
-  );
-
-  const handleQuickActionPress = useCallback(
-    (quickActionId: string) => {
-      setLastUserAction(`Hızlı aksiyon: ${quickActionId}`);
-      void appDiagnostics.recordBreadcrumb(
-        'ExplorerDashboard',
-        'Quick action pressed',
-        {
-          quickActionId,
-        },
-      );
-
-      try {
-        setInteractionError(null);
-
-        if (quickActionId === 'favorites') {
-          navigation.navigate('Favorites');
-          return;
-        }
-
-        if (
-          quickActionId === 'search' ||
-          quickActionId === 'recents' ||
-          quickActionId === 'cloud'
-        ) {
-          explorer.openPlaceholderView(createQuickActionPlaceholder(quickActionId));
-        }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Hızlı aksiyon başarısız';
-
-        setInteractionError(message);
-        setLastUserAction(`Hızlı aksiyon hata: ${message}`);
-        void appDiagnostics.recordError('ExplorerDashboard', error, {
-          quickActionId,
-        });
-        explorer.openPlaceholderView(
-          createUnsupportedCategoryPlaceholder('Hızlı aksiyon', message),
-        );
-      }
-    },
-    [explorer, navigation],
   );
 
   const renderItem = useCallback(
@@ -257,6 +206,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
       <>
         <ExplorerHeader
           canGoBack={explorer.canGoBack}
+          currentPath={explorer.currentPath}
           currentPathLabel={explorer.currentPathLabel}
           onCopySelection={operations.copySelection}
           onCutSelection={operations.cutSelection}
@@ -314,6 +264,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     ),
     [
       explorer.canGoBack,
+      explorer.currentPath,
       explorer.currentPathLabel,
       explorer.errorMessage,
       explorer.goBack,
@@ -418,7 +369,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     ],
   );
 
-  if (explorer.mode === 'dashboard') {
+  if (explorer.mode === 'home') {
     return (
       <ScreenContainer>
         <ScrollView
@@ -428,19 +379,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
           {storageAccessStatus === 'missing' ? (
             <StorageAccessPrompt onGrantAccess={requestStorageAccess} />
           ) : null}
-          <ExplorerDashboard
-            items={explorerDashboardItems}
-            onQuickActionPress={handleQuickActionPress}
-            onSelectItem={handleDashboardItemPress}
-          />
-          <ExplorerDiagnosticsPanel
-            entries={diagnosticEntries}
-            onClear={clearDiagnostics}
-            onRefresh={() => {
-              void refreshDiagnostics();
-            }}
-            summary={diagnosticsSummary}
-          />
+          <ExplorerDashboard onSelectEntry={handleHomeEntryPress} />
         </ScrollView>
       </ScreenContainer>
     );

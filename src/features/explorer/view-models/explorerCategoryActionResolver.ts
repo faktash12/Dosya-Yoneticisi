@@ -3,6 +3,7 @@ import type {
   ExplorerCategoryAction,
   ExplorerCategoryId,
   ExplorerEmptyStateConfig,
+  ExplorerHomeEntryId,
   ExplorerPlaceholderKind,
   ExplorerPlaceholderView,
 } from '@/features/explorer/types/explorer.types';
@@ -106,9 +107,9 @@ const directoryAction = (
 });
 
 export const resolveExplorerCategoryAction = (
-  categoryId: ExplorerCategoryId,
+  categoryId: ExplorerHomeEntryId | string,
 ): ExplorerCategoryAction => {
-  const actions: Record<ExplorerCategoryId, ExplorerCategoryAction> = {
+  const actions: Record<ExplorerHomeEntryId, ExplorerCategoryAction> = {
     'internal-storage': directoryAction(
       'internal-storage',
       ROOT_DIRECTORY,
@@ -172,6 +173,20 @@ export const resolveExplorerCategoryAction = (
         'recent',
       ),
     ),
+    'sd-card': {
+      kind: 'placeholder',
+      placeholder: createPlaceholder(
+        'sd-card',
+        'unsupported-category',
+        'SD kart',
+        'Harici SD kart bu sürümde ayrı bir kök olarak bağlanmadı.',
+        [
+          'Kart yuvası için ayrı sağlayıcı desteği sonraki fazda eklenebilir.',
+          'Şu an bu giriş güvenli bilgi ekranı olarak açılır.',
+        ],
+        'Ana sayfaya dön',
+      ),
+    },
     system: {
       kind: 'placeholder',
       placeholder: createPlaceholder(
@@ -219,7 +234,7 @@ export const resolveExplorerCategoryAction = (
       placeholder: createPlaceholder(
         'network',
         'network-access',
-        'Ağdan erişim',
+        'PC’den erişim',
         'SMB, WebDAV ve LAN paylaşımları için ayrılmış güvenli placeholder.',
         [
           'Ağ yolu entegrasyonları henüz aktif değil.',
@@ -258,7 +273,7 @@ export const resolveExplorerCategoryAction = (
     },
   };
 
-  return actions[categoryId] ?? {
+  return actions[categoryId as ExplorerHomeEntryId] ?? {
     kind: 'placeholder',
     placeholder: createUnsupportedCategoryPlaceholder(categoryId),
   };

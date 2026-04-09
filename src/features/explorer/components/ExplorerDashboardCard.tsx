@@ -30,6 +30,7 @@ interface ExplorerDashboardCardProps {
 
 const iconMap: Record<ExplorerDashboardIcon, typeof HardDrive> = {
   storage: HardDrive,
+  'sd-card': HardDrive,
   system: MonitorSmartphone,
   downloads: FolderArchive,
   images: ImageIcon,

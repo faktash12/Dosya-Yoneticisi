@@ -15,5 +15,10 @@ export const getParentPath = (path: string): string => {
 };
 
 export const getPathLabel = (path: string): string => {
-  return path.replace('/storage/emulated/0', 'Dahili Depolama');
+  if (path === ROOT_DIRECTORY) {
+    return 'Ana bellek';
+  }
+
+  const segments = path.split('/').filter(Boolean);
+  return segments.at(-1) ?? 'Ana bellek';
 };

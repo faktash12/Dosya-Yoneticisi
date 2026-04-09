@@ -31,6 +31,7 @@ interface EmptyStateProps {
 const iconMap: Record<ExplorerEmptyStateIcon, typeof FolderOpen> = {
   folder: FolderOpen,
   storage: HardDrive,
+  'sd-card': HardDrive,
   system: MonitorSmartphone,
   downloads: FolderArchive,
   images: ImageIcon,
