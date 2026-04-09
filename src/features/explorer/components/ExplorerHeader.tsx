@@ -31,22 +31,30 @@ export const ExplorerHeader = ({
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: 'flex-start',
+          gap: theme.spacing.md,
         }}>
         <View style={{flex: 1}}>
-          <AppText style={{fontSize: theme.typography.title}} weight="bold">
+          <AppText tone="accent" style={{fontSize: theme.typography.caption}} weight="semibold">
             Explorer
           </AppText>
-          <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+          <AppText
+            style={{fontSize: theme.typography.title, marginTop: theme.spacing.sm}}
+            weight="bold">
             {currentPathLabel}
+          </AppText>
+          <AppText tone="muted" style={{marginTop: theme.spacing.sm}}>
+            {selectedCount > 0
+              ? `${selectedCount} öğe seçildi`
+              : 'Uzun basarak çoklu seçim moduna girebilirsiniz.'}
           </AppText>
         </View>
         <Pressable
           disabled={!canGoBack}
           onPress={onGoBack}
           style={{
-            opacity: canGoBack ? 1 : 0.4,
-            borderRadius: theme.radii.md,
+            opacity: canGoBack ? 1 : 0.42,
+            borderRadius: theme.radii.lg,
             backgroundColor: theme.colors.surfaceMuted,
             padding: theme.spacing.md,
           }}>
@@ -57,37 +65,31 @@ export const ExplorerHeader = ({
       <View
         style={{
           marginTop: theme.spacing.lg,
-          gap: theme.spacing.md,
+          flexDirection: 'row',
+          gap: theme.spacing.sm,
         }}>
-        <AppText tone="muted">
-          {selectedCount > 0
-            ? `${selectedCount} öğe seçildi`
-            : 'Uzun basarak çoklu seçim moduna girebilirsiniz'}
-        </AppText>
-        <View style={{flexDirection: 'row', gap: theme.spacing.sm}}>
-          <Pressable
-            disabled={selectedCount === 0}
-            onPress={onCopySelection}
-            style={{
-              opacity: selectedCount === 0 ? 0.45 : 1,
-              borderRadius: theme.radii.md,
-              backgroundColor: theme.colors.primaryMuted,
-              padding: theme.spacing.md,
-            }}>
-            <Copy color={theme.colors.primary} size={18} />
-          </Pressable>
-          <Pressable
-            disabled={selectedCount === 0}
-            onPress={onCutSelection}
-            style={{
-              opacity: selectedCount === 0 ? 0.45 : 1,
-              borderRadius: theme.radii.md,
-              backgroundColor: theme.colors.surfaceMuted,
-              padding: theme.spacing.md,
-            }}>
-            <Scissors color={theme.colors.text} size={18} />
-          </Pressable>
-        </View>
+        <Pressable
+          disabled={selectedCount === 0}
+          onPress={onCopySelection}
+          style={{
+            opacity: selectedCount === 0 ? 0.45 : 1,
+            borderRadius: theme.radii.lg,
+            backgroundColor: theme.colors.primaryMuted,
+            padding: theme.spacing.md,
+          }}>
+          <Copy color={theme.colors.primary} size={18} />
+        </Pressable>
+        <Pressable
+          disabled={selectedCount === 0}
+          onPress={onCutSelection}
+          style={{
+            opacity: selectedCount === 0 ? 0.45 : 1,
+            borderRadius: theme.radii.lg,
+            backgroundColor: theme.colors.surfaceMuted,
+            padding: theme.spacing.md,
+          }}>
+          <Scissors color={theme.colors.text} size={18} />
+        </Pressable>
       </View>
     </SectionCard>
   );

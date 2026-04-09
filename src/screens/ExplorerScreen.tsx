@@ -1,30 +1,234 @@
-import React, {useCallback, useMemo} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Pressable,
   ScrollView,
   View,
 } from 'react-native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
 
+import {appContainer} from '@/app/di/container';
+import type {MainTabParamList} from '@/app/navigation/types';
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
+import {EmptyState} from '@/components/feedback/EmptyState';
 import {InlineError} from '@/components/feedback/InlineError';
 import {ScreenContainer} from '@/components/layout/ScreenContainer';
+import {useCloudStore} from '@/features/cloud/store/cloud.store';
+import {ExplorerDashboard} from '@/features/explorer/components/ExplorerDashboard';
+import {ExplorerDiagnosticsPanel} from '@/features/explorer/components/ExplorerDiagnosticsPanel';
 import {ExplorerHeader} from '@/features/explorer/components/ExplorerHeader';
+import {ExplorerPlaceholderView} from '@/features/explorer/components/ExplorerPlaceholderView';
 import {FileListItem} from '@/features/explorer/components/FileListItem';
+import {StorageAccessPrompt} from '@/features/explorer/components/StorageAccessPrompt';
 import {useExplorerController} from '@/features/explorer/hooks/useExplorerController';
 import {useExplorerOperations} from '@/features/explorer/hooks/useExplorerOperations';
-import {explorerQuickActions} from '@/features/explorer/view-models/explorerQuickActions';
+import type {ExplorerDashboardItem} from '@/features/explorer/types/explorer.types';
+import {
+  createQuickActionPlaceholder,
+  createUnsupportedCategoryPlaceholder,
+  resolveExplorerCategoryAction,
+} from '@/features/explorer/view-models/explorerCategoryActionResolver';
+import {explorerDashboardItems} from '@/features/explorer/view-models/explorerDashboardItems';
 import {useAppTheme} from '@/hooks/useAppTheme';
+import {appDiagnostics} from '@/services/logging/AppDiagnostics';
+import {
+  storagePermissionBridge,
+  type StorageAccessStatus,
+} from '@/services/platform/StoragePermissionBridge';
+
+const genericDirectoryEmptyState = {
+  title: 'Bu kaynakta henüz içerik yok',
+  description:
+    'İçerik eklendiğinde explorer burada listeler. Akış boş veya siyah ekran yerine güvenli empty state ile devam eder.',
+  icon: 'folder' as const,
+};
 
 export const ExplorerScreen = (): React.JSX.Element => {
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const theme = useAppTheme();
   const explorer = useExplorerController();
   const operations = useExplorerOperations();
+  const providers = useCloudStore(state => state.providers);
+  const hydrateProviders = useCloudStore(state => state.hydrate);
   const selectedIdSet = useMemo(
     () => new Set(explorer.selectedNodeIds),
     [explorer.selectedNodeIds],
+  );
+  const hasInitializedDiagnosticsRef = useRef(false);
+  const [storageAccessStatus, setStorageAccessStatus] =
+    React.useState<StorageAccessStatus>('unsupported');
+  const [diagnosticEntries, setDiagnosticEntries] = React.useState<
+    Awaited<ReturnType<typeof appDiagnostics.getEntries>>
+  >([]);
+  const [interactionError, setInteractionError] = React.useState<string | null>(
+    null,
+  );
+  const [lastUserAction, setLastUserAction] = React.useState<string>(
+    'Henüz kullanıcı aksiyonu yok.',
+  );
+
+  useEffect(() => {
+    if (providers.length > 0) {
+      return;
+    }
+
+    const loadProviders = async () => {
+      const summaries = await appContainer.getAvailableProvidersUseCase.execute();
+      hydrateProviders(summaries);
+    };
+
+    void loadProviders();
+  }, [hydrateProviders, providers.length]);
+
+  const refreshStorageAccessStatus = useCallback(async () => {
+    try {
+      const status = await storagePermissionBridge.getStatus();
+      setStorageAccessStatus(status);
+      void appDiagnostics.recordBreadcrumb('StoragePermission', 'Status checked', {
+        status,
+      });
+    } catch (error) {
+      setStorageAccessStatus('unsupported');
+      void appDiagnostics.recordError('StoragePermission', error);
+    }
+  }, []);
+
+  const refreshDiagnostics = useCallback(async () => {
+    const entries = await appDiagnostics.getEntries();
+    setDiagnosticEntries(entries.slice(-8).reverse());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshStorageAccessStatus();
+      void refreshDiagnostics();
+    }, [refreshDiagnostics, refreshStorageAccessStatus]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const onHardwareBackPress = () => {
+        if (explorer.mode !== 'dashboard') {
+          explorer.goBack();
+          return true;
+        }
+
+        return false;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onHardwareBackPress,
+      );
+
+      return () => subscription.remove();
+    }, [explorer.goBack, explorer.mode]),
+  );
+
+  useEffect(() => {
+    if (hasInitializedDiagnosticsRef.current) {
+      return;
+    }
+
+    hasInitializedDiagnosticsRef.current = true;
+    void refreshDiagnostics();
+  }, [refreshDiagnostics]);
+
+  useEffect(() => {
+    void refreshDiagnostics();
+  }, [
+    explorer.mode,
+    explorer.currentPath,
+    explorer.errorMessage,
+    explorer.nodes.length,
+    refreshDiagnostics,
+  ]);
+
+  const handleDashboardItemPress = useCallback(
+    (item: ExplorerDashboardItem) => {
+      setLastUserAction(`Dashboard kartı: ${item.title}`);
+      void appDiagnostics.recordBreadcrumb('ExplorerDashboard', 'Item pressed', {
+        itemId: item.id,
+        itemTitle: item.title,
+        categoryId: item.categoryId,
+      });
+
+      try {
+        setInteractionError(null);
+        const action = resolveExplorerCategoryAction(item.categoryId);
+
+        if (action.kind === 'directory') {
+          explorer.openDirectoryPath(action.path, {
+            categoryId: action.categoryId,
+            emptyState: action.emptyState,
+          });
+          return;
+        }
+
+        explorer.openPlaceholderView(action.placeholder);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Kategori açma aksiyonu başarısız';
+
+        setInteractionError(message);
+        setLastUserAction(`Dashboard hata: ${message}`);
+        void appDiagnostics.recordError('ExplorerDashboard', error, {
+          itemId: item.id,
+          categoryId: item.categoryId,
+        });
+        explorer.openPlaceholderView(
+          createUnsupportedCategoryPlaceholder(item.title, message),
+        );
+      }
+    },
+    [explorer],
+  );
+
+  const handleQuickActionPress = useCallback(
+    (quickActionId: string) => {
+      setLastUserAction(`Hızlı aksiyon: ${quickActionId}`);
+      void appDiagnostics.recordBreadcrumb(
+        'ExplorerDashboard',
+        'Quick action pressed',
+        {
+          quickActionId,
+        },
+      );
+
+      try {
+        setInteractionError(null);
+
+        if (quickActionId === 'favorites') {
+          navigation.navigate('Favorites');
+          return;
+        }
+
+        if (
+          quickActionId === 'search' ||
+          quickActionId === 'recents' ||
+          quickActionId === 'cloud'
+        ) {
+          explorer.openPlaceholderView(createQuickActionPlaceholder(quickActionId));
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Hızlı aksiyon başarısız';
+
+        setInteractionError(message);
+        setLastUserAction(`Hızlı aksiyon hata: ${message}`);
+        void appDiagnostics.recordError('ExplorerDashboard', error, {
+          quickActionId,
+        });
+        explorer.openPlaceholderView(
+          createUnsupportedCategoryPlaceholder('Hızlı aksiyon', message),
+        );
+      }
+    },
+    [explorer, navigation],
   );
 
   const renderItem = useCallback(
@@ -32,14 +236,23 @@ export const ExplorerScreen = (): React.JSX.Element => {
       <FileListItem
         node={item}
         onLongPress={explorer.toggleSelection}
-        onPress={explorer.openNode}
+        onPress={node => {
+          setInteractionError(null);
+          setLastUserAction(`Liste öğesi: ${node.name}`);
+          void appDiagnostics.recordBreadcrumb('ExplorerDirectory', 'Node pressed', {
+            nodeId: node.id,
+            path: node.path,
+            kind: node.kind,
+          });
+          explorer.openNode(node);
+        }}
         selected={selectedIdSet.has(item.id)}
       />
     ),
     [explorer.openNode, explorer.toggleSelection, selectedIdSet],
   );
 
-  const listHeader = useMemo(
+  const directoryHeader = useMemo(
     () => (
       <>
         <ExplorerHeader
@@ -50,41 +263,6 @@ export const ExplorerScreen = (): React.JSX.Element => {
           onGoBack={explorer.goBack}
           selectedCount={explorer.selectedNodeIds.length}
         />
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            gap: theme.spacing.sm,
-            paddingBottom: theme.spacing.lg,
-          }}>
-          {explorerQuickActions.map(action => {
-            const Icon = action.icon;
-
-            return (
-              <Pressable
-                key={action.id}
-                style={{
-                  borderRadius: theme.radii.lg,
-                  backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  paddingHorizontal: theme.spacing.lg,
-                  paddingVertical: theme.spacing.md,
-                }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: theme.spacing.sm,
-                  }}>
-                  <Icon color={theme.colors.primary} size={18} />
-                  <AppText weight="semibold">{action.label}</AppText>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
 
         {operations.clipboard ? (
           <SectionCard style={{marginBottom: theme.spacing.lg}}>
@@ -106,7 +284,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                   void operations.pasteIntoCurrentFolder();
                 }}
                 style={{
-                  borderRadius: theme.radii.md,
+                  borderRadius: theme.radii.lg,
                   backgroundColor: theme.colors.primary,
                   paddingHorizontal: theme.spacing.md,
                   paddingVertical: theme.spacing.sm,
@@ -118,7 +296,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
               <Pressable
                 onPress={operations.clearClipboard}
                 style={{
-                  borderRadius: theme.radii.md,
+                  borderRadius: theme.radii.lg,
                   backgroundColor: theme.colors.surfaceMuted,
                   paddingHorizontal: theme.spacing.md,
                   paddingVertical: theme.spacing.sm,
@@ -129,9 +307,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
           </SectionCard>
         ) : null}
 
-        {explorer.errorMessage ? (
-          <InlineError message={explorer.errorMessage} />
-        ) : null}
+        {explorer.errorMessage ? <InlineError message={explorer.errorMessage} /> : null}
 
         <View style={{marginBottom: theme.spacing.md}} />
       </>
@@ -147,12 +323,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
       operations.copySelection,
       operations.cutSelection,
       operations.pasteIntoCurrentFolder,
-      theme.colors.border,
       theme.colors.primary,
-      theme.colors.surface,
       theme.colors.surfaceMuted,
       theme.radii.lg,
-      theme.radii.md,
       theme.spacing.lg,
       theme.spacing.md,
       theme.spacing.sm,
@@ -160,42 +333,181 @@ export const ExplorerScreen = (): React.JSX.Element => {
     ],
   );
 
-  const emptyComponent = useMemo(
-    () =>
-      explorer.isLoading ? (
+  const emptyComponent = useMemo(() => {
+    if (explorer.isLoading) {
+      return (
         <View style={{paddingVertical: theme.spacing.xxl}}>
           <ActivityIndicator color={theme.colors.primary} />
         </View>
-      ) : (
-        <SectionCard>
-          <AppText weight="semibold">Bu klasör boş</AppText>
-          <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-            Gerçek dosya sistemi adaptörü eklendiğinde bu ekran native katmandan
-            beslenecek.
-          </AppText>
-        </SectionCard>
-      ),
-    [explorer.isLoading, theme.colors.primary, theme.spacing.xs, theme.spacing.xxl],
+      );
+    }
+
+    if (explorer.errorMessage) {
+      return (
+        <EmptyState
+          description={explorer.errorMessage}
+          icon={explorer.activeEmptyState?.icon ?? genericDirectoryEmptyState.icon}
+          supportingText="Kaynak geçici olarak açılamadı. Başka bir kategoriye dönebilir veya yeniden deneyebilirsiniz."
+          title="Kaynak yüklenemedi"
+        />
+      );
+    }
+
+    const emptyState = explorer.activeEmptyState ?? genericDirectoryEmptyState;
+
+    return (
+      <EmptyState
+        description={emptyState.description}
+        icon={emptyState.icon}
+        supportingText="Bu görünüm bilinçli olarak boş ekran üretmez; kategori akışı sağlıklı şekilde devam eder."
+        title={emptyState.title}
+      />
+    );
+  }, [
+    explorer.activeEmptyState,
+    explorer.errorMessage,
+    explorer.isLoading,
+    theme.colors.primary,
+    theme.spacing.xxl,
+  ]);
+
+  const requestStorageAccess = useCallback(async () => {
+    try {
+      setInteractionError(null);
+      setLastUserAction('Depolama izni ekranı açılıyor');
+      await storagePermissionBridge.requestAccess();
+      void appDiagnostics.recordBreadcrumb(
+        'StoragePermission',
+        'Opened all files access settings',
+      );
+      await refreshDiagnostics();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'İzin ekranı açılamadı';
+      setInteractionError(message);
+      setLastUserAction(`İzin hatası: ${message}`);
+      void appDiagnostics.recordError('StoragePermission', error);
+      await refreshDiagnostics();
+    }
+  }, [refreshDiagnostics]);
+
+  const clearDiagnostics = useCallback(async () => {
+    await appDiagnostics.clear();
+    await refreshDiagnostics();
+    setInteractionError(null);
+    setLastUserAction('Tanı kayıtları temizlendi');
+  }, [refreshDiagnostics]);
+
+  const diagnosticsSummary = useMemo(
+    () =>
+      [
+        `Mod: ${explorer.mode}`,
+        `Yol: ${explorer.currentPath}`,
+        `Öğe sayısı: ${explorer.nodes.length}`,
+        `Yükleniyor: ${explorer.isLoading ? 'evet' : 'hayır'}`,
+        `İzin: ${storageAccessStatus}`,
+        `Son aksiyon: ${lastUserAction}`,
+      ].join(' | '),
+    [
+      explorer.currentPath,
+      explorer.isLoading,
+      explorer.mode,
+      explorer.nodes.length,
+      lastUserAction,
+      storageAccessStatus,
+    ],
   );
+
+  if (explorer.mode === 'dashboard') {
+    return (
+      <ScreenContainer>
+        <ScrollView
+          contentContainerStyle={{paddingBottom: theme.spacing.xxl}}
+          showsVerticalScrollIndicator={false}>
+          {interactionError ? <InlineError message={interactionError} /> : null}
+          {storageAccessStatus === 'missing' ? (
+            <StorageAccessPrompt onGrantAccess={requestStorageAccess} />
+          ) : null}
+          <ExplorerDashboard
+            items={explorerDashboardItems}
+            onQuickActionPress={handleQuickActionPress}
+            onSelectItem={handleDashboardItemPress}
+          />
+          <ExplorerDiagnosticsPanel
+            entries={diagnosticEntries}
+            onClear={clearDiagnostics}
+            onRefresh={() => {
+              void refreshDiagnostics();
+            }}
+            summary={diagnosticsSummary}
+          />
+        </ScrollView>
+      </ScreenContainer>
+    );
+  }
+
+  if (explorer.mode === 'placeholder' && explorer.placeholderView) {
+    return (
+      <ScreenContainer>
+        <ScrollView
+          contentContainerStyle={{paddingBottom: theme.spacing.xxl}}
+          showsVerticalScrollIndicator={false}>
+          {interactionError ? <InlineError message={interactionError} /> : null}
+          <ExplorerPlaceholderView
+            onBack={explorer.goBack}
+            placeholder={explorer.placeholderView}
+            providers={providers}
+          />
+          <ExplorerDiagnosticsPanel
+            entries={diagnosticEntries}
+            onClear={clearDiagnostics}
+            onRefresh={() => {
+              void refreshDiagnostics();
+            }}
+            summary={diagnosticsSummary}
+          />
+        </ScrollView>
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer>
-      <FlatList
-        data={explorer.nodes}
-        extraData={explorer.selectedNodeIds}
-        keyExtractor={item => item.id}
-        ListHeaderComponent={listHeader}
-        ItemSeparatorComponent={() => <View style={{height: theme.spacing.sm}} />}
-        renderItem={renderItem}
-        ListEmptyComponent={emptyComponent}
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={16}
-        windowSize={5}
-        removeClippedSubviews
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{paddingBottom: theme.spacing.xxl}}
-      />
+      <View style={{flex: 1}}>
+        {interactionError ? <InlineError message={interactionError} /> : null}
+        {storageAccessStatus === 'missing' ? (
+          <StorageAccessPrompt onGrantAccess={requestStorageAccess} />
+        ) : null}
+        <FlatList
+          data={explorer.nodes}
+          extraData={explorer.selectedNodeIds}
+          keyExtractor={item => item.id}
+          ListHeaderComponent={directoryHeader}
+          ItemSeparatorComponent={() => <View style={{height: theme.spacing.sm}} />}
+          renderItem={renderItem}
+          ListEmptyComponent={emptyComponent}
+          ListFooterComponent={
+            <ExplorerDiagnosticsPanel
+              entries={diagnosticEntries}
+              onClear={clearDiagnostics}
+              onRefresh={() => {
+                void refreshDiagnostics();
+              }}
+              summary={diagnosticsSummary}
+            />
+          }
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={16}
+          windowSize={5}
+          removeClippedSubviews
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: theme.spacing.xxl,
+            flexGrow: 1,
+          }}
+        />
+      </View>
     </ScreenContainer>
   );
 };

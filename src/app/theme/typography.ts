@@ -1,8 +1,10 @@
 export const typography = {
-  title: 28,
+  hero: 30,
+  title: 26,
   heading: 20,
+  cardTitle: 17,
   body: 15,
   caption: 12,
+  micro: 11,
   mono: 'monospace',
 } as const;
-

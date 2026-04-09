@@ -1,6 +1,6 @@
 import React, {memo} from 'react';
-import {Pressable, View} from 'react-native';
-import {Check, File, Folder} from 'lucide-react-native';
+import {TouchableOpacity, View} from 'react-native';
+import {Check, ChevronRight, File, Folder} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
@@ -25,29 +25,32 @@ const FileListItemComponent = ({
   const isDirectory = node.kind === 'directory';
 
   return (
-    <Pressable
+    <TouchableOpacity
+      activeOpacity={0.88}
       delayLongPress={220}
       onPress={() => onPress(node)}
       onLongPress={() => onLongPress(node)}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: theme.radii.lg,
+        borderRadius: theme.radii.xl,
         borderWidth: 1,
         borderColor: selected ? theme.colors.primary : theme.colors.border,
         backgroundColor: selected
           ? theme.colors.primaryMuted
           : theme.colors.surface,
-        padding: theme.spacing.md,
+        paddingHorizontal: theme.spacing.lg,
+        paddingVertical: theme.spacing.md,
       }}>
       <View
         style={{
           marginRight: theme.spacing.md,
-          borderRadius: theme.radii.md,
+          borderRadius: theme.radii.lg,
           backgroundColor: isDirectory
             ? theme.colors.surfaceMuted
             : theme.colors.primaryMuted,
-          padding: theme.spacing.md,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.md,
         }}>
         {isDirectory ? (
           <Folder color={theme.colors.text} size={20} />
@@ -57,10 +60,17 @@ const FileListItemComponent = ({
       </View>
 
       <View style={{flex: 1}}>
-        <AppText weight="semibold">{node.name}</AppText>
-        <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+        <AppText style={{fontSize: theme.typography.body}} weight="semibold">
+          {node.name}
+        </AppText>
+        <AppText
+          tone="muted"
+          style={{
+            marginTop: theme.spacing.xs,
+            fontSize: theme.typography.caption,
+          }}>
           {isDirectory
-            ? `${node.childCount ?? 0} oge`
+            ? `${node.childCount ?? 0} öğe`
             : formatBytes(node.sizeBytes)}
           {'  '}•{'  '}
           {formatRelativeDate(node.modifiedAt)}
@@ -69,8 +79,8 @@ const FileListItemComponent = ({
 
       <View
         style={{
-          height: 24,
-          width: 24,
+          height: 30,
+          width: 30,
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: theme.radii.pill,
@@ -79,7 +89,9 @@ const FileListItemComponent = ({
             : theme.colors.surfaceMuted,
         }}>
         {selected ? (
-          <Check color="#FFFFFF" size={14} />
+          <Check color="#FFFFFF" size={16} />
+        ) : isDirectory ? (
+          <ChevronRight color={theme.colors.textMuted} size={16} />
         ) : (
           <View
             style={{
@@ -91,7 +103,7 @@ const FileListItemComponent = ({
           />
         )}
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 };
 
