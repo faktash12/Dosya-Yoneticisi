@@ -8,7 +8,6 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>(set => ({
-  colorSchemePreference: 'system',
+  colorSchemePreference: 'light',
   setColorSchemePreference: colorSchemePreference => set({colorSchemePreference}),
 }));
-

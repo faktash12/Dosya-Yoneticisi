@@ -418,6 +418,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
           <StorageAccessPrompt onGrantAccess={requestStorageAccess} />
         ) : null}
         <FlatList
+          key={explorer.currentPath}
           data={explorer.nodes}
           extraData={explorer.selectedNodeIds}
           keyExtractor={item => item.id}

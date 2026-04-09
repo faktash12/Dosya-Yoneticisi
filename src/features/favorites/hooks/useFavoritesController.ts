@@ -1,3 +1,4 @@
+import {Alert} from 'react-native';
 import {useCallback, useEffect} from 'react';
 import {useNavigation} from '@react-navigation/native';
 import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
@@ -49,22 +50,20 @@ export const useFavoritesController = () => {
 
       if (item.kind === 'directory') {
         explorerState.openBrowser(item.path);
-      } else {
-        explorerState.openPlaceholder({
-          id: `favorite-file-${item.id}`,
-          kind: 'file-preview',
-          title: item.name,
-          description:
-            'Favoriler üzerinden dosya önizleme bu sürümde güvenli placeholder olarak açılır.',
-          supportingLines: [
-            `Dosya yolu: ${item.path}`,
-            'Explorer akışı kapanmadan dosyaya geri dönebilirsiniz.',
-          ],
-          ctaLabel: 'Explorer’a dön',
-        });
+        navigation.navigate('Explorer');
+        return;
       }
 
-      navigation.navigate('Explorer');
+      Alert.alert(
+        'Önizleme hazır değil',
+        `${item.name} için önizleme henüz eklenmedi.`,
+      );
+
+      appContainer.logger.info({
+        scope: 'Favorites',
+        message: 'Favorite file preview is not implemented yet',
+        data: {itemId: item.id, path: item.path},
+      });
     },
     [navigation],
   );

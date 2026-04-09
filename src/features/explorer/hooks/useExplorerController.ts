@@ -1,4 +1,5 @@
-import {useCallback, useEffect, useEffectEvent, useMemo} from 'react';
+import {Alert} from 'react-native';
+import {useCallback, useEffect, useEffectEvent, useMemo, useRef} from 'react';
 
 import {appContainer} from '@/app/di/container';
 import {DirectoryNotFoundError} from '@/data/datasources/MockFileSystemDataSource';
@@ -9,7 +10,6 @@ import type {
   ExplorerDirectoryContext,
   ExplorerPlaceholderView,
 } from '@/features/explorer/types/explorer.types';
-import {createUnsupportedCategoryPlaceholder} from '@/features/explorer/view-models/explorerCategoryActionResolver';
 import {mapUnknownError} from '@/services/error/ErrorMapper';
 import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {getParentPath, getPathLabel} from '@/utils/path';
@@ -35,17 +35,18 @@ export const useExplorerController = () => {
   const openBrowser = useExplorerStore(state => state.openBrowser);
   const openPlaceholder = useExplorerStore(state => state.openPlaceholder);
 
+  const loadRequestIdRef = useRef(0);
+
   const handleLoadError = useEffectEvent((error: unknown) => {
     setNodes([]);
 
     if (error instanceof DirectoryNotFoundError) {
-      setErrorMessage(null);
-      openPlaceholder(
-        createUnsupportedCategoryPlaceholder(
-          'Kaynak açılamadı',
-          `${error.message}. Explorer güvenli placeholder ile devam ediyor.`,
-        ),
-      );
+      setErrorMessage(error.message);
+      appContainer.logger.warn({
+        scope: 'Explorer',
+        message: 'Directory path was not found in data source',
+        data: {path: error.message},
+      });
       return;
     }
 
@@ -59,6 +60,9 @@ export const useExplorerController = () => {
   });
 
   useEffect(() => {
+    loadRequestIdRef.current += 1;
+    const requestId = loadRequestIdRef.current;
+
     if (mode !== 'browser') {
       setLoading(false);
       setErrorMessage(null);
@@ -80,6 +84,10 @@ export const useExplorerController = () => {
           providerId: 'local',
         });
 
+        if (loadRequestIdRef.current !== requestId) {
+          return;
+        }
+
         setNodes(result);
         void appDiagnostics.recordBreadcrumb(
           'Explorer',
@@ -91,13 +99,19 @@ export const useExplorerController = () => {
           },
         );
       } catch (error) {
+        if (loadRequestIdRef.current !== requestId) {
+          return;
+        }
+
         void appDiagnostics.recordError('Explorer', error, {
           path: currentPath,
           durationMs: Date.now() - startedAt,
         });
         handleLoadError(error);
       } finally {
-        setLoading(false);
+        if (loadRequestIdRef.current === requestId) {
+          setLoading(false);
+        }
       }
     };
 
@@ -118,17 +132,14 @@ export const useExplorerController = () => {
         return;
       }
 
-      openPlaceholder({
-        id: `file-preview-${node.id}`,
-        kind: 'file-preview',
-        title: node.name,
-        description:
-          'Dosya önizleme ve açma akışı bu sürümde güvenli placeholder olarak bırakıldı.',
-        supportingLines: [
-          `Dosya yolu: ${node.path}`,
-          'Liste ve gezinme akışı çalışmaya devam eder.',
-        ],
-        ctaLabel: 'Klasöre geri dön',
+      Alert.alert(
+        'Önizleme hazır değil',
+        `${node.name} için önizleme henüz eklenmedi.`,
+      );
+
+      void appDiagnostics.recordBreadcrumb('Explorer', 'File preview alert shown', {
+        nodeId: node.id,
+        path: node.path,
       });
 
       appContainer.logger.info({
@@ -137,7 +148,7 @@ export const useExplorerController = () => {
         data: {nodeId: node.id, path: node.path},
       });
     },
-    [clearSelection, openBrowser, openPlaceholder],
+    [clearSelection, openBrowser],
   );
 
   const goBack = useCallback(() => {
@@ -147,14 +158,6 @@ export const useExplorerController = () => {
     });
 
     if (mode === 'placeholder') {
-      if (placeholderView?.kind === 'file-preview') {
-        openBrowser(currentPath, {
-          categoryId: activeDirectoryCategoryId,
-          emptyState: activeEmptyState,
-        });
-        return;
-      }
-
       openHome();
       return;
     }
@@ -171,14 +174,11 @@ export const useExplorerController = () => {
     clearSelection();
     openBrowser(getParentPath(currentPath));
   }, [
-    activeDirectoryCategoryId,
-    activeEmptyState,
     clearSelection,
     currentPath,
     mode,
     openBrowser,
     openHome,
-    placeholderView?.kind,
   ]);
 
   const handleToggleSelection = useCallback(
