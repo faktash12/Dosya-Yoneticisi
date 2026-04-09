@@ -7,9 +7,12 @@ import {ScreenContainer} from '@/components/layout/ScreenContainer';
 import {useAppTheme} from '@/hooks/useAppTheme';
 
 export const AppErrorFallback = ({
+  error,
   resetErrorBoundary,
 }: FallbackProps): React.JSX.Element => {
   const theme = useAppTheme();
+  const errorMessage =
+    error instanceof Error ? error.message : 'Bilinmeyen hata';
 
   return (
     <ScreenContainer style={{justifyContent: 'center'}}>
@@ -27,6 +30,18 @@ export const AppErrorFallback = ({
         <AppText tone="muted" style={{marginTop: theme.spacing.sm}}>
           Bu katman sonraki asamada Crashlytics veya Sentry ile baglanabilir.
         </AppText>
+        <View
+          style={{
+            marginTop: theme.spacing.lg,
+            borderRadius: theme.radii.md,
+            backgroundColor: theme.colors.surfaceMuted,
+            padding: theme.spacing.md,
+          }}>
+          <AppText weight="semibold">Hata ozeti</AppText>
+          <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+            {errorMessage}
+          </AppText>
+        </View>
         <Pressable
           onPress={resetErrorBoundary}
           style={{
@@ -45,4 +60,3 @@ export const AppErrorFallback = ({
     </ScreenContainer>
   );
 };
-

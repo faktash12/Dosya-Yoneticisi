@@ -57,14 +57,12 @@ export const ExplorerHeader = ({
       <View
         style={{
           marginTop: theme.spacing.lg,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          gap: theme.spacing.md,
         }}>
         <AppText tone="muted">
           {selectedCount > 0
-            ? `${selectedCount} oge secildi`
-            : 'Uzun basarak coklu secim moduna girebilirsiniz'}
+            ? `${selectedCount} öğe seçildi`
+            : 'Uzun basarak çoklu seçim moduna girebilirsiniz'}
         </AppText>
         <View style={{flexDirection: 'row', gap: theme.spacing.sm}}>
           <Pressable
@@ -94,4 +92,3 @@ export const ExplorerHeader = ({
     </SectionCard>
   );
 };
-

@@ -1,4 +1,4 @@
-import React, {createContext, useContext} from 'react';
+import React, {createContext, useContext, useMemo} from 'react';
 import {useColorScheme} from 'react-native';
 
 import {createAppTheme, type AppTheme} from '@/app/theme';
@@ -16,9 +16,10 @@ export const AppThemeProvider = ({
 
   const resolvedMode =
     preference === 'system' ? normalizedSystemScheme : preference;
+  const theme = useMemo(() => createAppTheme(resolvedMode), [resolvedMode]);
 
   return (
-    <ThemeContext.Provider value={createAppTheme(resolvedMode)}>
+    <ThemeContext.Provider value={theme}>
       {children}
     </ThemeContext.Provider>
   );

@@ -150,28 +150,20 @@ const tree: Record<string, FileSystemNode[]> = {
 
 const flatten = Object.values(tree).flat();
 
-const delay = async () => {
-  await new Promise<void>(resolve => setTimeout(() => resolve(), 180));
-};
-
 export class MockFileSystemDataSource {
   async listDirectory(path: string): Promise<FileSystemNode[]> {
-    await delay();
     return tree[path] ?? [];
   }
 
   async getFavorites(): Promise<FileSystemNode[]> {
-    await delay();
     return flatten.filter(node => node.isFavorite);
   }
 
   async getRecent(): Promise<FileSystemNode[]> {
-    await delay();
     return flatten.filter(node => node.isRecent);
   }
 
   async search(query: string): Promise<FileSystemNode[]> {
-    await delay();
     const lowerQuery = query.trim().toLowerCase();
     return flatten.filter(node => node.name.toLowerCase().includes(lowerQuery));
   }

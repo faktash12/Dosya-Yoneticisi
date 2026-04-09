@@ -2,15 +2,27 @@ import React, {useEffect} from 'react';
 import {Pressable, ScrollView, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {Monitor, Moon, Sun} from 'lucide-react-native';
 
 import {appContainer} from '@/app/di/container';
 import type {RootStackParamList} from '@/app/navigation/types';
+import type {ColorSchemePreference} from '@/app/theme';
 import {useUiStore} from '@/app/store/ui.store';
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
 import {ScreenContainer} from '@/components/layout/ScreenContainer';
 import {useCloudStore} from '@/features/cloud/store/cloud.store';
 import {useAppTheme} from '@/hooks/useAppTheme';
+
+const themeOptions: Array<{
+  value: ColorSchemePreference;
+  label: string;
+  icon: typeof Monitor;
+}> = [
+  {value: 'system', label: 'Sistem', icon: Monitor},
+  {value: 'light', label: 'Açık', icon: Sun},
+  {value: 'dark', label: 'Koyu', icon: Moon},
+];
 
 export const SettingsScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -49,27 +61,46 @@ export const SettingsScreen = (): React.JSX.Element => {
               flexDirection: 'row',
               gap: theme.spacing.sm,
             }}>
-            {(['system', 'light', 'dark'] as const).map(item => (
+            {themeOptions.map(option => {
+              const Icon = option.icon;
+
+              return (
               <Pressable
-                key={item}
-                onPress={() => setPreference(item)}
+                key={option.value}
+                onPress={() => setPreference(option.value)}
                 style={{
                   borderRadius: theme.radii.md,
                   borderWidth: 1,
                   borderColor:
-                    preference === item
+                    preference === option.value
                       ? theme.colors.primary
                       : theme.colors.border,
                   backgroundColor:
-                    preference === item
+                    preference === option.value
                       ? theme.colors.primaryMuted
                       : theme.colors.surface,
                   paddingHorizontal: theme.spacing.md,
                   paddingVertical: theme.spacing.sm,
                 }}>
-                <AppText weight="semibold">{item}</AppText>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: theme.spacing.xs,
+                  }}>
+                  <Icon
+                    color={
+                      preference === option.value
+                        ? theme.colors.primary
+                        : theme.colors.text
+                    }
+                    size={16}
+                  />
+                  <AppText weight="semibold">{option.label}</AppText>
+                </View>
               </Pressable>
-            ))}
+              );
+            })}
           </View>
         </SectionCard>
 
@@ -119,4 +150,3 @@ export const SettingsScreen = (): React.JSX.Element => {
     </ScreenContainer>
   );
 };
-

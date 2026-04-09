@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {memo} from 'react';
 import {Pressable, View} from 'react-native';
 import {Check, File, Folder} from 'lucide-react-native';
 
@@ -15,7 +15,7 @@ interface FileListItemProps {
   onLongPress: (node: FileSystemNode) => void;
 }
 
-export const FileListItem = ({
+const FileListItemComponent = ({
   node,
   selected,
   onPress,
@@ -26,6 +26,7 @@ export const FileListItem = ({
 
   return (
     <Pressable
+      delayLongPress={220}
       onPress={() => onPress(node)}
       onLongPress={() => onLongPress(node)}
       style={{
@@ -94,3 +95,13 @@ export const FileListItem = ({
   );
 };
 
+export const FileListItem = memo(
+  FileListItemComponent,
+  (previousProps, nextProps) =>
+    previousProps.node.id === nextProps.node.id &&
+    previousProps.node.name === nextProps.node.name &&
+    previousProps.node.modifiedAt === nextProps.node.modifiedAt &&
+    previousProps.node.sizeBytes === nextProps.node.sizeBytes &&
+    previousProps.node.childCount === nextProps.node.childCount &&
+    previousProps.selected === nextProps.selected,
+);

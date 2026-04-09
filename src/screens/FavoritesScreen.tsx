@@ -62,6 +62,11 @@ export const FavoritesScreen = (): React.JSX.Element => {
               title="Favori oge bulunmuyor"
             />
           }
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={16}
+          windowSize={5}
+          removeClippedSubviews
           showsVerticalScrollIndicator={false}
         />
       )}

@@ -1,10 +1,17 @@
-import {useEffect, useEffectEvent} from 'react';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+} from 'react';
 
 import {appContainer} from '@/app/di/container';
 import {ROOT_DIRECTORY} from '@/constants/app';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import {mapUnknownError} from '@/services/error/ErrorMapper';
+import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {getParentPath, getPathLabel} from '@/utils/path';
 
 export const useExplorerController = () => {
@@ -32,9 +39,14 @@ export const useExplorerController = () => {
 
   useEffect(() => {
     const loadDirectory = async () => {
+      const startedAt = Date.now();
+
       try {
         setLoading(true);
         setErrorMessage(null);
+        void appDiagnostics.recordBreadcrumb('Explorer', 'Directory load started', {
+          path: currentPath,
+        });
 
         const result = await appContainer.browseDirectoryUseCase.execute({
           path: currentPath,
@@ -42,7 +54,20 @@ export const useExplorerController = () => {
         });
 
         setNodes(result);
+        void appDiagnostics.recordBreadcrumb(
+          'Explorer',
+          'Directory load completed',
+          {
+            path: currentPath,
+            nodeCount: result.length,
+            durationMs: Date.now() - startedAt,
+          },
+        );
       } catch (error) {
+        void appDiagnostics.recordError('Explorer', error, {
+          path: currentPath,
+          durationMs: Date.now() - startedAt,
+        });
         handleLoadError(error);
       } finally {
         setLoading(false);
@@ -52,18 +77,13 @@ export const useExplorerController = () => {
     void loadDirectory();
   }, [currentPath, handleLoadError, setErrorMessage, setLoading, setNodes]);
 
-  return {
-    currentPath,
-    currentPathLabel: getPathLabel(currentPath),
-    nodes,
-    isLoading,
-    errorMessage,
-    selectedNodeIds,
-    canGoBack: currentPath !== ROOT_DIRECTORY,
-    openNode: (node: FileSystemNode) => {
+  const openNode = useCallback(
+    (node: FileSystemNode) => {
       if (node.kind === 'directory') {
         clearSelection();
-        setCurrentPath(node.path);
+        startTransition(() => {
+          setCurrentPath(node.path);
+        });
         return;
       }
 
@@ -73,13 +93,47 @@ export const useExplorerController = () => {
         data: {nodeId: node.id, path: node.path},
       });
     },
-    goBack: () => {
-      if (currentPath !== ROOT_DIRECTORY) {
-        clearSelection();
+    [clearSelection, setCurrentPath],
+  );
+
+  const goBack = useCallback(() => {
+    if (currentPath !== ROOT_DIRECTORY) {
+      clearSelection();
+      startTransition(() => {
         setCurrentPath(getParentPath(currentPath));
-      }
-    },
-    toggleSelection: (node: FileSystemNode) => toggleSelection(node.id),
-    clearSelection,
-  };
+      });
+    }
+  }, [clearSelection, currentPath, setCurrentPath]);
+
+  const handleToggleSelection = useCallback(
+    (node: FileSystemNode) => toggleSelection(node.id),
+    [toggleSelection],
+  );
+
+  return useMemo(
+    () => ({
+      currentPath,
+      currentPathLabel: getPathLabel(currentPath),
+      nodes,
+      isLoading,
+      errorMessage,
+      selectedNodeIds,
+      canGoBack: currentPath !== ROOT_DIRECTORY,
+      openNode,
+      goBack,
+      toggleSelection: handleToggleSelection,
+      clearSelection,
+    }),
+    [
+      clearSelection,
+      currentPath,
+      errorMessage,
+      goBack,
+      handleToggleSelection,
+      isLoading,
+      nodes,
+      openNode,
+      selectedNodeIds,
+    ],
+  );
 };

@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useMemo} from 'react';
 import {FlatList, Pressable, View} from 'react-native';
 
 import {appContainer} from '@/app/di/container';
@@ -16,6 +16,7 @@ export const TransfersScreen = (): React.JSX.Element => {
   const historyJobs = useTransfersStore(state => state.historyJobs);
   const hydrateFromJobs = useTransfersStore(state => state.hydrateFromJobs);
   const hydrateQueue = useOperationQueueStore(state => state.hydrate);
+  const allJobs = useMemo(() => [...activeJobs, ...historyJobs], [activeJobs, historyJobs]);
 
   useEffect(() => {
     void appContainer.operationQueueProcessor.listJobs().then(jobs => {
@@ -52,7 +53,7 @@ export const TransfersScreen = (): React.JSX.Element => {
       </SectionCard>
 
       <FlatList
-        data={[...activeJobs, ...historyJobs]}
+        data={allJobs}
         keyExtractor={item => item.id}
         ItemSeparatorComponent={() => <View style={{height: theme.spacing.sm}} />}
         ListHeaderComponent={
@@ -170,6 +171,11 @@ export const TransfersScreen = (): React.JSX.Element => {
             </AppText>
           </SectionCard>
         }
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={16}
+        windowSize={5}
+        removeClippedSubviews
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingBottom: theme.spacing.xxl}}
       />

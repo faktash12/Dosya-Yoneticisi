@@ -15,6 +15,12 @@ import {SettingsScreen} from '@/screens/SettingsScreen';
 import {TransfersScreen} from '@/screens/TransfersScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const TAB_ICONS = {
+  Explorer: SquareStack,
+  Favorites: Heart,
+  Transfers: RefreshCcwDot,
+  Settings: Settings2,
+} as const;
 
 export const MainTabs = (): React.JSX.Element => {
   const theme = useAppTheme();
@@ -23,6 +29,8 @@ export const MainTabs = (): React.JSX.Element => {
     <Tab.Navigator
       initialRouteName="Explorer"
       screenOptions={({route}) => ({
+        lazy: true,
+        freezeOnBlur: true,
         headerShown: false,
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
@@ -33,20 +41,10 @@ export const MainTabs = (): React.JSX.Element => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.tabInactive,
+        tabBarHideOnKeyboard: true,
         tabBarIcon: ({color, size}) => {
-          if (route.name === 'Explorer') {
-            return <SquareStack color={color} size={size} />;
-          }
-
-          if (route.name === 'Favorites') {
-            return <Heart color={color} size={size} />;
-          }
-
-          if (route.name === 'Transfers') {
-            return <RefreshCcwDot color={color} size={size} />;
-          }
-
-          return <Settings2 color={color} size={size} />;
+          const Icon = TAB_ICONS[route.name];
+          return <Icon color={color} size={size} />;
         },
       })}>
       <Tab.Screen name="Explorer" component={ExplorerScreen} />
@@ -56,4 +54,3 @@ export const MainTabs = (): React.JSX.Element => {
     </Tab.Navigator>
   );
 };
-
