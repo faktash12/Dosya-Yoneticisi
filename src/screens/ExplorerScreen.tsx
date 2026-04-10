@@ -54,7 +54,10 @@ import {useExplorerController} from '@/features/explorer/hooks/useExplorerContro
 import {useExplorerOperations} from '@/features/explorer/hooks/useExplorerOperations';
 import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import {useTrashStore} from '@/features/explorer/store/trash.store';
-import type {ExplorerExtendedHomeEntryId} from '@/features/explorer/types/explorer.types';
+import type {
+  ExplorerExtendedHomeEntryId,
+  ExplorerStorageCardItem,
+} from '@/features/explorer/types/explorer.types';
 import {
   createUnsupportedCategoryPlaceholder,
   resolveExplorerCategoryAction,
@@ -132,6 +135,9 @@ const segmentLabelMap: Record<string, string> = {
 
 const getDisplayLabelForSegment = (segment: string): string =>
   segmentLabelMap[segment] ?? segment;
+
+const areStringArraysEqual = (left: string[], right: string[]): boolean =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
 
 const isImageNode = (node: FileSystemNode): boolean => {
   const extension = node.extension?.toLowerCase();
@@ -299,6 +305,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletePermanently, setDeletePermanently] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileSystemNode[]>([]);
   const [isSearchLoading, setSearchLoading] = useState(false);
   const [isSearchOpen, setSearchOpen] = useState(false);
@@ -310,6 +317,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const [createModalState, setCreateModalState] = useState<CreateModalState | null>(null);
   const [renameTargetNode, setRenameTargetNode] = useState<FileSystemNode | null>(null);
   const [usbRoots, setUsbRoots] = useState<string[]>([]);
+  const [sdRoots, setSdRoots] = useState<string[]>([]);
   const [installedApps, setInstalledApps] = useState<InstalledAppItem[]>([]);
   const [isAppsLoading, setAppsLoading] = useState(false);
   const [selectedAppPackage, setSelectedAppPackage] = useState<string | null>(null);
@@ -324,7 +332,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
   const sortedNodes = useMemo(() => sortNodes(explorer.nodes, sortModeId), [explorer.nodes, sortModeId]);
   const filteredNodes = useMemo(() => {
-    if (!searchQuery.trim()) {
+    if (!debouncedSearchQuery.trim()) {
       return sortedNodes;
     }
 
@@ -332,22 +340,45 @@ export const ExplorerScreen = (): React.JSX.Element => {
       return searchResults;
     }
 
-    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
+    const normalizedQuery = debouncedSearchQuery.trim().toLocaleLowerCase('tr-TR');
     return sortedNodes.filter(node => node.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
-  }, [explorer.mode, searchQuery, searchResults, sortedNodes]);
+  }, [debouncedSearchQuery, explorer.mode, searchResults, sortedNodes]);
 
   const homeStorageItems = useMemo(() => {
-    const resolvedStorageCards = storageCards.map(item =>
-      item.id === 'usb'
-        ? {
-            ...item,
-            isActive: usbRoots.length > 0,
-            usedLabel: usbRoots.length > 0 ? 'Bağlı' : 'Bağlı değil',
-            totalLabel: usbRoots.length > 0 ? 'USB hazır' : '',
-            usageRatio: usbRoots.length > 0 ? 1 : 0,
-          }
-        : item,
-    );
+    const internalStorageCard = storageCards[0];
+    const fixedStorageCards = storageCards.slice(1);
+    const resolvedStorageCards: ExplorerStorageCardItem[] = [
+      ...(internalStorageCard ? [internalStorageCard] : []),
+      ...(sdRoots.length > 0
+        ? [
+            {
+              id: 'sd-card' as const,
+              title: 'SD kart',
+              subtitle: 'Harici depolama',
+              usedLabel: 'Bağlı',
+              totalLabel: 'hazır',
+              usageRatio: 1,
+              icon: 'sd-card' as const,
+              isActive: true,
+            },
+          ]
+        : []),
+      ...(usbRoots.length > 0
+        ? [
+            {
+              id: 'usb' as const,
+              title: 'USB',
+              subtitle: 'OTG depolama',
+              usedLabel: 'Bağlı',
+              totalLabel: 'hazır',
+              usageRatio: 1,
+              icon: 'usb' as const,
+              isActive: true,
+            },
+          ]
+        : []),
+      ...fixedStorageCards,
+    ];
 
     if (!searchQuery.trim() || explorer.mode !== 'home') {
       return resolvedStorageCards;
@@ -357,7 +388,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     return resolvedStorageCards.filter(item =>
       item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery),
     );
-  }, [explorer.mode, searchQuery, usbRoots.length]);
+  }, [explorer.mode, sdRoots.length, searchQuery, usbRoots.length]);
 
   const homeShortcutItems = useMemo(() => {
     if (!searchQuery.trim() || explorer.mode !== 'home') {
@@ -405,19 +436,32 @@ export const ExplorerScreen = (): React.JSX.Element => {
     void loadFavorites();
   }, [favoriteItems.length, setFavoriteItems, setFavoritesLoading]);
 
-  const refreshUsbRoots = useCallback(async () => {
+  const refreshRemovableStorageRoots = useCallback(async () => {
     try {
-      const roots = await localFileSystemBridge.getUsbRoots();
-      setUsbRoots(roots);
+      const devices = await localFileSystemBridge.getRemovableStorageDevices();
+      const nextUsbRoots = devices
+        .filter(device => device.kind === 'usb')
+        .map(device => device.path);
+      const nextSdRoots = devices
+        .filter(device => device.kind === 'sd-card')
+        .map(device => device.path);
+
+      setUsbRoots(currentRoots =>
+        areStringArraysEqual(currentRoots, nextUsbRoots) ? currentRoots : nextUsbRoots,
+      );
+      setSdRoots(currentRoots =>
+        areStringArraysEqual(currentRoots, nextSdRoots) ? currentRoots : nextSdRoots,
+      );
     } catch {
-      setUsbRoots([]);
+      setUsbRoots(currentRoots => (currentRoots.length === 0 ? currentRoots : []));
+      setSdRoots(currentRoots => (currentRoots.length === 0 ? currentRoots : []));
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void refreshUsbRoots();
-    }, [refreshUsbRoots]),
+      void refreshRemovableStorageRoots();
+    }, [refreshRemovableStorageRoots]),
   );
 
   useEffect(() => {
@@ -432,7 +476,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     const loadApps = async () => {
       try {
         setAppsLoading(true);
-        const applications = await localFileSystemBridge.listInstalledApps(false);
+        const applications = await localFileSystemBridge.listInstalledApps(true);
 
         if (!isActive) {
           return;
@@ -462,9 +506,17 @@ export const ExplorerScreen = (): React.JSX.Element => {
   }, [isAppsView]);
 
   useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  useEffect(() => {
     let isActive = true;
 
-    if (!searchQuery.trim() || explorer.mode !== 'browser') {
+    if (!debouncedSearchQuery.trim() || explorer.mode !== 'browser') {
       setSearchResults([]);
       setSearchLoading(false);
       return;
@@ -475,7 +527,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         setSearchLoading(true);
         const results = await localFileSystemBridge.searchDirectory(
           explorer.currentPath,
-          searchQuery,
+          debouncedSearchQuery,
           showHiddenFiles,
         );
 
@@ -507,7 +559,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
   }, [
     explorer.currentPath,
     explorer.mode,
-    searchQuery,
+    debouncedSearchQuery,
     showHiddenFiles,
     sortModeId,
   ]);
@@ -534,6 +586,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     setCreateMenuOpen(false);
     setSearchOpen(false);
     setSearchQuery('');
+    setDebouncedSearchQuery('');
   }, [explorer.currentPath, explorer.mode]);
 
   useEffect(() => {
@@ -570,6 +623,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
           setMoreMenuOpen(false);
           setCreateMenuOpen(false);
           setSearchOpen(false);
+          setSearchQuery('');
+          setDebouncedSearchQuery('');
           return true;
         }
 
@@ -578,7 +633,18 @@ export const ExplorerScreen = (): React.JSX.Element => {
           return true;
         }
 
-        return false;
+        Alert.alert('Çıkış', 'Uygulamadan çıkmak istediğinize emin misiniz?', [
+          {
+            text: 'İptal',
+            style: 'cancel',
+          },
+          {
+            text: 'Çıkış',
+            style: 'destructive',
+            onPress: () => BackHandler.exitApp(),
+          },
+        ]);
+        return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
@@ -627,6 +693,30 @@ export const ExplorerScreen = (): React.JSX.Element => {
       setInteractionError(null);
 
       try {
+        if (entryId === 'sd-card') {
+          const sdRoot = sdRoots.at(0);
+          if (sdRoot) {
+            explorer.openBrowserPath(sdRoot, {
+              categoryId: null,
+              emptyState: {
+                title: 'SD kart boş',
+                description:
+                  'Takılı SD kartta henüz görüntülenecek içerik bulunmuyor.',
+                icon: 'sd-card',
+              },
+            });
+            return;
+          }
+
+          explorer.openPlaceholderView(
+            createUnsupportedCategoryPlaceholder(
+              'SD kart',
+              'Takılı bir SD kart bulunamadı.',
+            ),
+          );
+          return;
+        }
+
         if (entryId === 'usb') {
           const usbRoot = usbRoots.at(0);
           if (usbRoot) {
@@ -667,7 +757,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         explorer.openPlaceholderView(createUnsupportedCategoryPlaceholder(entryId, message));
       }
     },
-    [explorer, usbRoots],
+    [explorer, sdRoots, usbRoots],
   );
 
   const handleDrawerLocationPress = useCallback(
@@ -1002,12 +1092,12 @@ export const ExplorerScreen = (): React.JSX.Element => {
       explorer.requestReload();
     }
     if (explorer.mode === 'home') {
-      void refreshUsbRoots().finally(() => setRefreshing(false));
+      void refreshRemovableStorageRoots().finally(() => setRefreshing(false));
     }
     if (isAppsView) {
       setAppsLoading(true);
       void localFileSystemBridge
-        .listInstalledApps(false)
+        .listInstalledApps(true)
         .then(applications => setInstalledApps(applications))
         .finally(() => {
           setAppsLoading(false);
@@ -1015,7 +1105,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         });
     }
     setMoreMenuOpen(false);
-  }, [explorer, isAppsView, refreshUsbRoots]);
+  }, [explorer, isAppsView, refreshRemovableStorageRoots]);
 
   const handleToggleHiddenFiles = useCallback(() => {
     setShowHiddenFiles(!showHiddenFiles);
@@ -1049,6 +1139,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     setSearchOpen(currentValue => {
       if (currentValue) {
         setSearchQuery('');
+        setDebouncedSearchQuery('');
       }
       return !currentValue;
     });
@@ -1385,6 +1476,10 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const headerNode = (
     <ExplorerHeader
       isSearchOpen={isSearchOpen}
+      onClearSearch={() => {
+        setSearchQuery('');
+        setDebouncedSearchQuery('');
+      }}
       onChangeSearchQuery={setSearchQuery}
       onOpenDrawer={openDrawer}
       onPressSegment={handlePressBreadcrumbSegment}
@@ -1632,7 +1727,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
             refreshControl={
               <RefreshControl
                 onRefresh={handleRefreshCurrent}
-                refreshing={isRefreshing || isAppsLoading}
+                refreshing={isRefreshing}
                 tintColor={theme.colors.primary}
               />
             }
@@ -1691,7 +1786,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
             refreshControl={
               <RefreshControl
                 onRefresh={handleRefreshCurrent}
-                refreshing={isRefreshing || explorer.isLoading || isSearchLoading}
+                refreshing={isRefreshing}
                 tintColor={theme.colors.primary}
               />
             }

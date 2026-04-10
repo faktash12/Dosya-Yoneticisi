@@ -7,6 +7,7 @@ import {
   Menu,
   Search,
   SlidersHorizontal,
+  X,
 } from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
@@ -23,6 +24,7 @@ interface ExplorerHeaderProps {
   onToggleSearch: () => void;
   onToggleSortMenu: () => void;
   onToggleMoreMenu: () => void;
+  onClearSearch: () => void;
   onPressSegment?: (index: number) => void;
 }
 
@@ -37,6 +39,7 @@ export const ExplorerHeader = ({
   onToggleSearch,
   onToggleSortMenu,
   onToggleMoreMenu,
+  onClearSearch,
   onPressSegment,
 }: ExplorerHeaderProps): React.JSX.Element => {
   const theme = useAppTheme();
@@ -133,18 +136,27 @@ export const ExplorerHeader = ({
             borderColor: theme.colors.border,
             paddingHorizontal: theme.spacing.md,
             paddingBottom: theme.spacing.sm,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
           }}>
           <TextInput
             onChangeText={onChangeSearchQuery}
             placeholder={searchPlaceholder}
             placeholderTextColor={theme.colors.textMuted}
             style={{
+              flex: 1,
               color: theme.colors.text,
               fontSize: theme.typography.body,
               paddingVertical: theme.spacing.sm,
             }}
             value={searchQuery}
           />
+          {searchQuery ? (
+            <Pressable hitSlop={8} onPress={onClearSearch}>
+              <X color={theme.colors.textMuted} size={18} />
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </View>

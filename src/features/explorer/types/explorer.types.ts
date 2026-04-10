@@ -33,6 +33,7 @@ export type ExplorerPlaceholderKind =
 export type ExplorerDashboardIcon =
   | 'storage'
   | 'sd-card'
+  | 'usb'
   | 'system'
   | 'downloads'
   | 'images'
@@ -96,7 +97,10 @@ export interface ExplorerStorageCardItem {
   usedLabel: string;
   totalLabel: string;
   usageRatio: number;
-  icon: Extract<ExplorerDashboardIcon, 'storage' | 'sd-card' | 'downloads'>;
+  icon: Extract<
+    ExplorerDashboardIcon,
+    'storage' | 'sd-card' | 'usb' | 'system' | 'downloads'
+  >;
   isActive?: boolean;
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import {Pressable, View, type DimensionValue} from 'react-native';
-import {FolderArchive, HardDrive} from 'lucide-react-native';
+import {FolderArchive, HardDrive, Shield, Usb} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
@@ -19,21 +19,31 @@ interface StorageCardProps {
 const iconMap = {
   storage: HardDrive,
   'sd-card': HardDrive,
+  usb: Usb,
+  system: Shield,
   downloads: FolderArchive,
 } as const;
 
 const iconToneMap = {
   storage: {
-    backgroundColor: '#DDEAFE',
-    iconColor: '#1D4ED8',
+    backgroundColor: '#E6F3F1',
+    iconColor: '#0F766E',
   },
   'sd-card': {
-    backgroundColor: '#E5E7EB',
-    iconColor: '#374151',
+    backgroundColor: '#EEF2FF',
+    iconColor: '#4F46E5',
+  },
+  usb: {
+    backgroundColor: '#F0F9FF',
+    iconColor: '#0284C7',
+  },
+  system: {
+    backgroundColor: '#F1F5F9',
+    iconColor: '#334155',
   },
   downloads: {
-    backgroundColor: '#DCFCE7',
-    iconColor: '#15803D',
+    backgroundColor: '#ECFDF5',
+    iconColor: '#059669',
   },
 } as const;
 
@@ -53,7 +63,7 @@ export const StorageCard = ({
   const progressWidth = `${Math.max(0, Math.min(item.usageRatio, 1)) * 100}%` as DimensionValue;
 
   return (
-    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '31%'}}>
+    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '100%'}}>
       {({pressed}) => (
         <SectionCard
           style={{

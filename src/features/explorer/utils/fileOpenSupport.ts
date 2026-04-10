@@ -4,11 +4,15 @@ export type FileOpenMode =
   | 'text-preview'
   | 'html-preview'
   | 'image-preview'
+  | 'audio-preview'
+  | 'video-preview'
   | 'external';
 
 const textExtensions = new Set(['txt', 'log', 'md', 'json', 'csv']);
 const htmlExtensions = new Set(['html', 'htm']);
 const imageExtensions = new Set(['img', 'jpg', 'jpeg', 'png', 'webp']);
+const audioExtensions = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']);
+const videoExtensions = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', '3gp']);
 const officeExtensions = new Set(['doc', 'docx', 'xls', 'xlsx']);
 
 export const getFileOpenMode = (node: FileSystemNode): FileOpenMode => {
@@ -26,12 +30,28 @@ export const getFileOpenMode = (node: FileSystemNode): FileOpenMode => {
     return 'image-preview';
   }
 
+  if (extension && audioExtensions.has(extension)) {
+    return 'audio-preview';
+  }
+
+  if (extension && videoExtensions.has(extension)) {
+    return 'video-preview';
+  }
+
   if (extension && officeExtensions.has(extension)) {
     return 'external';
   }
 
   if (node.mimeType?.startsWith('image/')) {
     return 'image-preview';
+  }
+
+  if (node.mimeType?.startsWith('audio/')) {
+    return 'audio-preview';
+  }
+
+  if (node.mimeType?.startsWith('video/')) {
+    return 'video-preview';
   }
 
   if (node.mimeType?.startsWith('text/')) {

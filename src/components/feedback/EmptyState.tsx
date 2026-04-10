@@ -13,6 +13,7 @@ import {
   Package,
   RadioTower,
   Trash2,
+  Usb,
   Video,
 } from 'lucide-react-native';
 
@@ -32,6 +33,7 @@ const iconMap: Record<ExplorerEmptyStateIcon, typeof FolderOpen> = {
   folder: FolderOpen,
   storage: HardDrive,
   'sd-card': HardDrive,
+  usb: Usb,
   system: MonitorSmartphone,
   downloads: FolderArchive,
   images: ImageIcon,

@@ -1,5 +1,5 @@
 import React from 'react';
-import {useWindowDimensions, View} from 'react-native';
+import {ScrollView, useWindowDimensions, View} from 'react-native';
 
 import {CategoryShortcutCard} from '@/features/explorer/components/CategoryShortcutCard';
 import {ExplorerHomeSection} from '@/features/explorer/components/ExplorerHomeSection';
@@ -26,18 +26,16 @@ export const ExplorerDashboard = ({
   const theme = useAppTheme();
   const {width} = useWindowDimensions();
   const horizontalPadding = theme.spacing.md * 2;
-  const gridGap = theme.spacing.md;
+  const gridGap = theme.spacing.sm;
   const itemWidth = Math.floor((width - horizontalPadding - gridGap * 2) / 3);
 
   return (
     <View>
       <ExplorerHomeSection title="Depolama">
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'stretch',
-          }}>
+        <ScrollView
+          horizontal
+          contentContainerStyle={{gap: theme.spacing.sm}}
+          showsHorizontalScrollIndicator={false}>
           {storageItems.map(item => (
             <StorageCard
               key={item.id}
@@ -46,7 +44,7 @@ export const ExplorerDashboard = ({
               width={itemWidth}
             />
           ))}
-        </View>
+        </ScrollView>
       </ExplorerHomeSection>
 
       <ExplorerHomeSection
@@ -56,16 +54,21 @@ export const ExplorerDashboard = ({
           style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
-            columnGap: theme.spacing.md,
-            rowGap: theme.spacing.md,
+            marginHorizontal: -(gridGap / 2),
           }}>
           {shortcutItems.map(item => (
-            <CategoryShortcutCard
+            <View
               key={item.id}
-              item={item}
-              onPress={onSelectEntry}
-              width={itemWidth}
-            />
+              style={{
+                width: '33.333%',
+                paddingHorizontal: gridGap / 2,
+                marginBottom: theme.spacing.sm,
+              }}>
+              <CategoryShortcutCard
+                item={item}
+                onPress={onSelectEntry}
+              />
+            </View>
           ))}
         </View>
       </ExplorerHomeSection>

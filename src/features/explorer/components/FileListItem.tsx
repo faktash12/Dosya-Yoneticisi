@@ -117,16 +117,7 @@ const FileListItemComponent = ({
           <Check color="#FFFFFF" size={16} />
         ) : isDirectory ? (
           <ChevronRight color={theme.colors.textMuted} size={16} />
-        ) : (
-          <View
-            style={{
-              height: 10,
-              width: 10,
-              borderRadius: theme.radii.pill,
-              backgroundColor: theme.colors.border,
-            }}
-          />
-        )}
+        ) : null}
       </View>
     </TouchableOpacity>
   );

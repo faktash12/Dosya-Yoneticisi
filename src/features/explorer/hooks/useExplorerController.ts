@@ -93,10 +93,26 @@ export const useExplorerController = () => {
           path: currentPath,
         });
 
-        const result = await appContainer.browseDirectoryUseCase.execute({
-          path: currentPath,
-          providerId: 'local',
-        });
+        const result =
+          activeDirectoryCategoryId === 'recent'
+            ? (
+                await localFileSystemBridge.searchDirectory(
+                  ROOT_DIRECTORY,
+                  '.',
+                  showHiddenFiles,
+                )
+              )
+                .filter(node => node.kind === 'file')
+                .sort(
+                  (leftNode, rightNode) =>
+                    new Date(rightNode.modifiedAt).getTime() -
+                    new Date(leftNode.modifiedAt).getTime(),
+                )
+                .slice(0, 100)
+            : await appContainer.browseDirectoryUseCase.execute({
+                path: currentPath,
+                providerId: 'local',
+              });
         const visibleNodes = showHiddenFiles
           ? result
           : result.filter(node => !node.name.startsWith('.'));
@@ -135,6 +151,7 @@ export const useExplorerController = () => {
     void loadDirectory();
   }, [
     currentPath,
+    activeDirectoryCategoryId,
     handleLoadError,
     mode,
     reloadVersion,
@@ -165,7 +182,9 @@ export const useExplorerController = () => {
         if (
           fileOpenMode === 'text-preview' ||
           fileOpenMode === 'html-preview' ||
-          fileOpenMode === 'image-preview'
+          fileOpenMode === 'image-preview' ||
+          fileOpenMode === 'audio-preview' ||
+          fileOpenMode === 'video-preview'
         ) {
           clearSelection();
           openPreview(node);

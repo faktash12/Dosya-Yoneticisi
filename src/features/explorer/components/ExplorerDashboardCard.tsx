@@ -13,6 +13,7 @@ import {
   Package,
   RadioTower,
   Trash2,
+  Usb,
   Video,
 } from 'lucide-react-native';
 
@@ -31,6 +32,7 @@ interface ExplorerDashboardCardProps {
 const iconMap: Record<ExplorerDashboardIcon, typeof HardDrive> = {
   storage: HardDrive,
   'sd-card': HardDrive,
+  usb: Usb,
   system: MonitorSmartphone,
   downloads: FolderArchive,
   images: ImageIcon,

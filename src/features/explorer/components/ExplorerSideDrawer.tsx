@@ -99,13 +99,15 @@ const DrawerNodeRow = ({
         onPress={() => onPress(node)}
         style={({pressed}) => ({
           flex: 1,
-          backgroundColor: pressed
-            ? theme.colors.primaryMuted
-            : theme.colors.surfaceMuted,
+          backgroundColor: pressed ? theme.colors.primaryMuted : 'transparent',
+          borderBottomWidth: 1,
+          borderColor: theme.colors.border,
           paddingHorizontal: theme.spacing.md,
-          paddingVertical: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
         })}>
-        <AppText>{node.name}</AppText>
+        <AppText style={{fontSize: theme.typography.caption + 1}}>
+          {node.name}
+        </AppText>
         {showPath ? (
           <AppText
             tone="muted"
@@ -118,13 +120,10 @@ const DrawerNodeRow = ({
         <Pressable
           onPress={() => onRemove(node)}
           style={({pressed}) => ({
-            borderRadius: theme.radii.md,
-            backgroundColor: pressed
-              ? theme.colors.primaryMuted
-              : theme.colors.surfaceMuted,
+            backgroundColor: pressed ? theme.colors.primaryMuted : 'transparent',
             padding: theme.spacing.sm,
           })}>
-          <StarOff color={theme.colors.textMuted} size={18} />
+          <StarOff color="#D97706" size={18} />
         </Pressable>
       ) : null}
     </View>

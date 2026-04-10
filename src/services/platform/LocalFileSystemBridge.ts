@@ -30,6 +30,19 @@ export interface InstalledApplicationInfo {
   isSystemApp: boolean;
 }
 
+export interface RemovableStorageDeviceInfo {
+  path: string;
+  label: string;
+  kind: 'sd-card' | 'usb';
+}
+
+export interface MediaPlaybackStatus {
+  isPlaying: boolean;
+  durationMs: number;
+  positionMs: number;
+  path?: string | null;
+}
+
 interface LocalFileSystemModuleShape {
   getRootDirectory: () => Promise<string>;
   listDirectory: (path: string) => Promise<NativeFileSystemNode[]>;
@@ -60,10 +73,16 @@ interface LocalFileSystemModuleShape {
     conflictStrategy: 'overwrite' | 'skip' | 'rename',
   ) => Promise<string>;
   getUsbRoots: () => Promise<string[]>;
+  getRemovableStorageDevices?: () => Promise<RemovableStorageDeviceInfo[]>;
   listInstalledApps: (
     includeSystemApps: boolean,
   ) => Promise<InstalledApplicationInfo[]>;
   uninstallPackage: (packageName: string) => Promise<boolean>;
+  startMediaFile: (path: string) => Promise<MediaPlaybackStatus>;
+  pauseMediaPlayback: () => Promise<MediaPlaybackStatus>;
+  resumeMediaPlayback: () => Promise<MediaPlaybackStatus>;
+  stopMediaPlayback: () => Promise<MediaPlaybackStatus>;
+  getMediaPlaybackStatus: () => Promise<MediaPlaybackStatus>;
 }
 
 const nativeModule = NativeModules.LocalFileSystemModule as
@@ -243,6 +262,14 @@ export const localFileSystemBridge = {
     return nativeModule.getUsbRoots();
   },
 
+  async getRemovableStorageDevices(): Promise<RemovableStorageDeviceInfo[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.getRemovableStorageDevices) {
+      return [];
+    }
+
+    return nativeModule.getRemovableStorageDevices();
+  },
+
   async listInstalledApps(
     includeSystemApps = false,
   ): Promise<InstalledApplicationInfo[]> {
@@ -259,5 +286,45 @@ export const localFileSystemBridge = {
     }
 
     return nativeModule.uninstallPackage(packageName);
+  },
+
+  async startMediaFile(path: string): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.startMediaFile(path);
+  },
+
+  async pauseMediaPlayback(): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.pauseMediaPlayback();
+  },
+
+  async resumeMediaPlayback(): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.resumeMediaPlayback();
+  },
+
+  async stopMediaPlayback(): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.stopMediaPlayback();
+  },
+
+  async getMediaPlaybackStatus(): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.getMediaPlaybackStatus();
   },
 };

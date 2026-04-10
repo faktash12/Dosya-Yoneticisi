@@ -38,27 +38,27 @@ const iconMap = {
 
 const iconToneMap = {
   images: {
-    backgroundColor: '#FCE7F3',
-    iconColor: '#BE185D',
+    backgroundColor: '#FDF2F8',
+    iconColor: '#DB2777',
   },
   audio: {
-    backgroundColor: '#E0E7FF',
-    iconColor: '#4338CA',
+    backgroundColor: '#EEF2FF',
+    iconColor: '#4F46E5',
   },
   video: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
     iconColor: '#DC2626',
   },
   documents: {
-    backgroundColor: '#FFEDD5',
-    iconColor: '#EA580C',
+    backgroundColor: '#FFF7ED',
+    iconColor: '#F97316',
   },
   apps: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: '#F0FDF4',
     iconColor: '#16A34A',
   },
   recent: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
     iconColor: '#2563EB',
   },
   cloud: {
@@ -66,12 +66,12 @@ const iconToneMap = {
     iconColor: '#0F766E',
   },
   remote: {
-    backgroundColor: '#EDE9FE',
+    backgroundColor: '#F5F3FF',
     iconColor: '#7C3AED',
   },
   network: {
-    backgroundColor: '#F3F4F6',
-    iconColor: '#374151',
+    backgroundColor: '#F8FAFC',
+    iconColor: '#475569',
   },
 } as const;
 
@@ -90,7 +90,7 @@ export const CategoryShortcutCard = ({
     };
 
   return (
-    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '31%'}}>
+    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '100%'}}>
       {({pressed}) => (
         <SectionCard
           style={{

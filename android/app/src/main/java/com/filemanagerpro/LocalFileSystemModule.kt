@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -30,6 +31,9 @@ import java.util.Locale
 class LocalFileSystemModule(
   reactContext: ReactApplicationContext
 ) : ReactContextBaseJavaModule(reactContext) {
+
+  private var mediaPlayer: MediaPlayer? = null
+  private var mediaPath: String? = null
 
   override fun getName(): String = "LocalFileSystemModule"
 
@@ -153,12 +157,29 @@ class LocalFileSystemModule(
   fun getUsbRoots(promise: Promise) {
     try {
       val roots = Arguments.createArray()
-      resolveUsbRoots().forEach { root ->
-        roots.pushString(root)
+      resolveRemovableStorageDevices().filter { it.second == "usb" }.forEach { root ->
+        roots.pushString(root.first)
       }
       promise.resolve(roots)
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_USB_ROOTS_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun getRemovableStorageDevices(promise: Promise) {
+    try {
+      val roots = Arguments.createArray()
+      resolveRemovableStorageDevices().forEach { root ->
+        val map = Arguments.createMap()
+        map.putString("path", root.first)
+        map.putString("kind", root.second)
+        map.putString("label", if (root.second == "usb") "USB" else "SD kart")
+        roots.pushMap(map)
+      }
+      promise.resolve(roots)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_REMOVABLE_ROOTS_FAILED", error.message, error)
     }
   }
 
@@ -213,6 +234,66 @@ class LocalFileSystemModule(
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_UNINSTALL_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun startMediaFile(path: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val file = resolveFile(path)
+      stopCurrentMedia()
+
+      mediaPlayer =
+        MediaPlayer().apply {
+          setDataSource(file.absolutePath)
+          prepare()
+          start()
+        }
+      mediaPath = file.absolutePath
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      stopCurrentMedia()
+      promise.reject("LOCAL_FS_MEDIA_START_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun pauseMediaPlayback(promise: Promise) {
+    try {
+      mediaPlayer?.takeIf { it.isPlaying }?.pause()
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_MEDIA_PAUSE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun resumeMediaPlayback(promise: Promise) {
+    try {
+      mediaPlayer?.start()
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_MEDIA_RESUME_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun stopMediaPlayback(promise: Promise) {
+    try {
+      stopCurrentMedia()
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_MEDIA_STOP_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun getMediaPlaybackStatus(promise: Promise) {
+    try {
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_MEDIA_STATUS_FAILED", error.message, error)
     }
   }
 
@@ -422,8 +503,7 @@ class LocalFileSystemModule(
   }
 
   private fun ensureWithinRoot(path: String) {
-    val root = getExternalStorageRoot().canonicalFile
-    if (!path.startsWith(root.path)) {
+    if (!isPathInsideAllowedRoot(path)) {
       throw IllegalArgumentException("Bu kaynak uygulamanın erişim alanı dışında: $path")
     }
   }
@@ -435,7 +515,7 @@ class LocalFileSystemModule(
   ): File {
     val candidate = File(destinationDirectory, source.name).canonicalFile
 
-    if (!candidate.path.startsWith(getExternalStorageRoot().canonicalPath)) {
+    if (!isPathInsideAllowedRoot(candidate.path)) {
       throw IllegalArgumentException("Hedef klasör uygulamanın erişim alanı dışında.")
     }
 
@@ -508,6 +588,41 @@ class LocalFileSystemModule(
     }
   }
 
+  private fun stopCurrentMedia() {
+    mediaPlayer?.run {
+      if (isPlaying) {
+        stop()
+      }
+      release()
+    }
+    mediaPlayer = null
+    mediaPath = null
+  }
+
+  private fun isPathInsideAllowedRoot(path: String): Boolean {
+    val canonicalPath = File(path).canonicalPath
+    val allowedRoots =
+      listOf(getExternalStorageRoot().canonicalPath) +
+        resolveRemovableStorageDevices().map { device -> File(device.first).canonicalPath }
+
+    return allowedRoots.any { rootPath ->
+      canonicalPath == rootPath || canonicalPath.startsWith("$rootPath/")
+    }
+  }
+
+  private fun mediaStatusMap() =
+    Arguments.createMap().apply {
+      val player = mediaPlayer
+      putBoolean("isPlaying", player?.isPlaying == true)
+      putDouble("durationMs", (player?.duration ?: 0).toDouble())
+      putDouble("positionMs", (player?.currentPosition ?: 0).toDouble())
+      if (mediaPath != null) {
+        putString("path", mediaPath)
+      } else {
+        putNull("path")
+      }
+    }
+
   private fun getExternalStorageRoot(): File {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       Environment.getExternalStorageDirectory()
@@ -517,11 +632,11 @@ class LocalFileSystemModule(
     }
   }
 
-  private fun resolveUsbRoots(): List<String> {
+  private fun resolveRemovableStorageDevices(): List<Pair<String, String>> {
     val packageName = reactApplicationContext.packageName
     val externalDirs = reactApplicationContext.getExternalFilesDirs(null)
     val rootPath = getExternalStorageRoot().canonicalPath
-    val discovered = linkedSetOf<String>()
+    val discovered = linkedMapOf<String, String>()
 
     externalDirs
       .filterNotNull()
@@ -541,7 +656,10 @@ class LocalFileSystemModule(
 
         val candidateFile = File(rootCandidate)
         if (candidateFile.exists() && candidateFile.canRead()) {
-          discovered.add(candidateFile.canonicalPath)
+          val normalizedPath = candidateFile.canonicalPath.lowercase(Locale.ROOT)
+          val kind =
+            if (normalizedPath.contains("usb") || normalizedPath.contains("otg")) "usb" else "sd-card"
+          discovered[candidateFile.canonicalPath] = kind
         }
       }
 
@@ -556,12 +674,25 @@ class LocalFileSystemModule(
 
         val directory = volume.directory ?: return@forEach
         if (directory.exists() && directory.canRead()) {
-          discovered.add(directory.canonicalPath)
+          val description = volume.getDescription(reactApplicationContext).lowercase(Locale.ROOT)
+          val normalizedPath = directory.canonicalPath.lowercase(Locale.ROOT)
+          val kind =
+            if (
+              description.contains("usb") ||
+                description.contains("otg") ||
+                normalizedPath.contains("usb") ||
+                normalizedPath.contains("otg")
+            ) {
+              "usb"
+            } else {
+              "sd-card"
+            }
+          discovered[directory.canonicalPath] = kind
         }
       }
     }
 
-    return discovered.toList()
+    return discovered.map { entry -> entry.key to entry.value }
   }
 
   private fun resolveMimeType(file: File): String {

@@ -166,10 +166,10 @@ export const resolveExplorerCategoryAction = (
     ),
     recent: directoryAction(
       'recent',
-      `${ROOT_DIRECTORY}/Recent`,
+      ROOT_DIRECTORY,
       createEmptyState(
         'Yeni dosya bulunmuyor',
-        'Yakın zamanda eklenen içerik olduğunda bu akış otomatik olarak güncellenecek.',
+        'Son eklenen dosyalar taranamadı veya bu konumda yeni içerik bulunamadı.',
         'recent',
       ),
     ),
@@ -187,20 +187,15 @@ export const resolveExplorerCategoryAction = (
         'Ana sayfaya dön',
       ),
     },
-    system: {
-      kind: 'placeholder',
-      placeholder: createPlaceholder(
+    system: directoryAction(
+      'system',
+      `${ROOT_DIRECTORY}/Android`,
+      createEmptyState(
+        'Sistem klasörü açılamadı',
+        'Android sistem klasörleri cihaz izinlerine göre sınırlı olabilir.',
         'system',
-        'system-info',
-        'Sistem',
-        'Sistem alanı bu sürümde yalnızca güvenli bilgi ekranı olarak sunulur.',
-        [
-          'Korunan klasörler için yazma işlemleri açılmamıştır.',
-          'Explorer akışı bozulmadan geri dönebilirsiniz.',
-        ],
-        'Geri dön',
       ),
-    },
+    ),
     cloud: {
       kind: 'placeholder',
       placeholder: createPlaceholder(
@@ -235,12 +230,12 @@ export const resolveExplorerCategoryAction = (
         'network',
         'network-access',
         'PC’den erişim',
-        'SMB, WebDAV ve LAN paylaşımları için ayrılmış güvenli placeholder.',
+        'Telefon depolamasına yerel ağ üzerinden erişim ayarları.',
         [
-          'Ağ yolu entegrasyonları henüz aktif değil.',
-          'Kategori açıldığında ekran her zaman anlamlı bilgi verir.',
+          'Gizli dosyaları göster seçeneğini belirleyebilirsiniz.',
+          'Başlat düğmesi bağlantı bilgilerini üretir.',
         ],
-        'Ana sayfaya dön',
+        'Başlat',
       ),
     },
     trash: {
@@ -260,10 +255,10 @@ export const resolveExplorerCategoryAction = (
         'apps',
         'apps-info',
         'Uygulamalar',
-        'APK paketleri ve uygulama dosyaları için hazırlanan bilgi ekranı.',
+        'Cihazdaki yüklü uygulamalar ve kaldırma işlemleri burada listelenir.',
         [
-          'Kurulu uygulama envanteri bu sürümde bağlanmadı.',
-          'Yüzey aktif ama güvenli placeholder davranışıyla açılır.',
+          'Her satırda gerçek uygulama simgesi ve boyutu gösterilir.',
+          'Uzun basınca kaldırma işlemi Android ekranına yönlendirilir.',
         ],
         'Ana sayfaya dön',
       ),
