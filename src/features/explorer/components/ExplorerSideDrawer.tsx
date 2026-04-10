@@ -1,11 +1,12 @@
 import React from 'react';
-import {Pressable, ScrollView, View} from 'react-native';
+import {Dimensions, Pressable, ScrollView, View} from 'react-native';
 import {
   FolderOpen,
   HardDrive,
   History,
   Home,
   MonitorSmartphone,
+  Settings,
   Star,
   Trash2,
   X,
@@ -31,6 +32,7 @@ interface ExplorerSideDrawerProps {
   onClose: () => void;
   onSelectTab: (tab: ExplorerDrawerTab) => void;
   onOpenLocation: (locationId: DrawerLocationItem['id']) => void;
+  onOpenSettings: () => void;
   onOpenNode: (node: FileSystemNode) => void;
 }
 
@@ -104,15 +106,16 @@ export const ExplorerSideDrawer = ({
   onClose,
   onSelectTab,
   onOpenLocation,
+  onOpenSettings,
   onOpenNode,
 }: ExplorerSideDrawerProps): React.JSX.Element => {
   const theme = useAppTheme();
+  const drawerWidth = Math.min(344, Math.max(286, Dimensions.get('window').width * 0.72));
 
   return (
     <View
       style={{
-        width: '78%',
-        maxWidth: 360,
+        width: drawerWidth,
         height: '100%',
         backgroundColor: theme.colors.surface,
         borderTopRightRadius: theme.radii.xl,
@@ -187,7 +190,7 @@ export const ExplorerSideDrawer = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={{paddingTop: theme.spacing.lg, gap: theme.spacing.sm}}
+        contentContainerStyle={{paddingTop: theme.spacing.lg, gap: theme.spacing.sm, flexGrow: 1}}
         showsVerticalScrollIndicator={false}>
         {activeTab === 'locations'
           ? drawerLocations.map(item => {
@@ -278,6 +281,41 @@ export const ExplorerSideDrawer = ({
                 </View>
               )
           : null}
+
+        {activeTab === 'locations' ? (
+          <View style={{marginTop: 'auto', paddingTop: theme.spacing.lg}}>
+            <Pressable
+              onPress={onOpenSettings}
+              style={({pressed}) => ({
+                borderRadius: theme.radii.lg,
+                backgroundColor: pressed
+                  ? theme.colors.primaryMuted
+                  : theme.colors.surfaceMuted,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.md,
+              })}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                }}>
+                <Settings color={theme.colors.primary} size={18} />
+                <View style={{flex: 1}}>
+                  <AppText weight="semibold">Ayarlar</AppText>
+                  <AppText
+                    tone="muted"
+                    style={{
+                      marginTop: theme.spacing.xs,
+                      fontSize: theme.typography.caption,
+                    }}>
+                    Görünüm ve dosya davranışını yönet
+                  </AppText>
+                </View>
+              </View>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );

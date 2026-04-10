@@ -1,25 +1,28 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   FlatList,
   Pressable,
   ScrollView,
+  Share,
   View,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 
 import {appContainer} from '@/app/di/container';
-import {AppText} from '@/components/common/AppText';
-import {SectionCard} from '@/components/common/SectionCard';
+import type {RootStackParamList} from '@/app/navigation/types';
 import {EmptyState} from '@/components/feedback/EmptyState';
 import {InlineError} from '@/components/feedback/InlineError';
 import {ScreenContainer} from '@/components/layout/ScreenContainer';
 import {useCloudStore} from '@/features/cloud/store/cloud.store';
+import {ExplorerClipboardActionBar} from '@/features/explorer/components/ExplorerClipboardActionBar';
 import {ExplorerDashboard} from '@/features/explorer/components/ExplorerDashboard';
-import {ExplorerDiagnosticsPanel} from '@/features/explorer/components/ExplorerDiagnosticsPanel';
 import {ExplorerHeader} from '@/features/explorer/components/ExplorerHeader';
 import {ExplorerPlaceholderView} from '@/features/explorer/components/ExplorerPlaceholderView';
+import {ExplorerSelectionActionBar} from '@/features/explorer/components/ExplorerSelectionActionBar';
 import {ExplorerSideDrawer} from '@/features/explorer/components/ExplorerSideDrawer';
 import {FileListItem} from '@/features/explorer/components/FileListItem';
 import {FilePreviewView} from '@/features/explorer/components/FilePreviewView';
@@ -33,20 +36,21 @@ import {
 } from '@/features/explorer/view-models/explorerCategoryActionResolver';
 import {useFavoritesStore} from '@/features/favorites/store/favorites.store';
 import {useAppTheme} from '@/hooks/useAppTheme';
-import {appDiagnostics} from '@/services/logging/AppDiagnostics';
+import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
 import {
   storagePermissionBridge,
   type StorageAccessStatus,
 } from '@/services/platform/StoragePermissionBridge';
 
 const genericDirectoryEmptyState = {
-  title: 'Bu kaynakta henüz içerik yok',
+  title: 'Bu klasörde henüz içerik yok',
   description:
-    'İçerik eklendiğinde explorer burada listeler. Akış boş veya siyah ekran yerine güvenli empty state ile devam eder.',
+    'Bu konum şu anda boş görünüyor. Başka bir klasöre geçebilir veya yeni dosya oluşturabilirsiniz.',
   icon: 'folder' as const,
 };
 
 export const ExplorerScreen = (): React.JSX.Element => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const theme = useAppTheme();
   const explorer = useExplorerController();
   const operations = useExplorerOperations();
@@ -55,26 +59,22 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const favoriteItems = useFavoritesStore(state => state.items);
   const setFavoriteItems = useFavoritesStore(state => state.setItems);
   const setFavoritesLoading = useFavoritesStore(state => state.setLoading);
+  const handledClipboardJobsRef = useRef(new Set<string>());
+  const [storageAccessStatus, setStorageAccessStatus] =
+    useState<StorageAccessStatus>('unsupported');
+  const [interactionError, setInteractionError] = useState<string | null>(null);
+  const [isDrawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'locations' | 'favorites' | 'recent'>(
+    'locations',
+  );
+
   const selectedIdSet = useMemo(
     () => new Set(explorer.selectedNodeIds),
     [explorer.selectedNodeIds],
   );
-  const hasInitializedDiagnosticsRef = useRef(false);
-  const handledClipboardJobsRef = useRef(new Set<string>());
-  const [storageAccessStatus, setStorageAccessStatus] =
-    React.useState<StorageAccessStatus>('unsupported');
-  const [diagnosticEntries, setDiagnosticEntries] = React.useState<
-    Awaited<ReturnType<typeof appDiagnostics.getEntries>>
-  >([]);
-  const [interactionError, setInteractionError] = React.useState<string | null>(
-    null,
-  );
-  const [lastUserAction, setLastUserAction] = React.useState<string>(
-    'Henüz kullanıcı aksiyonu yok.',
-  );
-  const [isDrawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<'locations' | 'favorites' | 'recent'>(
-    'locations',
+  const selectedNodes = useMemo(
+    () => explorer.nodes.filter(node => selectedIdSet.has(node.id)),
+    [explorer.nodes, selectedIdSet],
   );
 
   useEffect(() => {
@@ -112,30 +112,25 @@ export const ExplorerScreen = (): React.JSX.Element => {
     try {
       const status = await storagePermissionBridge.getStatus();
       setStorageAccessStatus(status);
-      void appDiagnostics.recordBreadcrumb('StoragePermission', 'Status checked', {
-        status,
-      });
-    } catch (error) {
+    } catch {
       setStorageAccessStatus('unsupported');
-      void appDiagnostics.recordError('StoragePermission', error);
     }
-  }, []);
-
-  const refreshDiagnostics = useCallback(async () => {
-    const entries = await appDiagnostics.getEntries();
-    setDiagnosticEntries(entries.slice(-8).reverse());
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       void refreshStorageAccessStatus();
-      void refreshDiagnostics();
-    }, [refreshDiagnostics, refreshStorageAccessStatus]),
+    }, [refreshStorageAccessStatus]),
   );
 
   useFocusEffect(
     useCallback(() => {
       const onHardwareBackPress = () => {
+        if (isDrawerOpen) {
+          setDrawerOpen(false);
+          return true;
+        }
+
         if (explorer.mode !== 'home') {
           explorer.goBack();
           return true;
@@ -150,27 +145,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
       );
 
       return () => subscription.remove();
-    }, [explorer.goBack, explorer.mode]),
+    }, [explorer.goBack, explorer.mode, isDrawerOpen]),
   );
-
-  useEffect(() => {
-    if (hasInitializedDiagnosticsRef.current) {
-      return;
-    }
-
-    hasInitializedDiagnosticsRef.current = true;
-    void refreshDiagnostics();
-  }, [refreshDiagnostics]);
-
-  useEffect(() => {
-    void refreshDiagnostics();
-  }, [
-    explorer.mode,
-    explorer.currentPath,
-    explorer.errorMessage,
-    explorer.nodes.length,
-    refreshDiagnostics,
-  ]);
 
   useEffect(() => {
     const unsubscribe = appContainer.operationQueueProcessor.subscribe(jobs => {
@@ -187,11 +163,12 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
         const affectsCurrentPath =
           job.destination?.path === explorer.currentPath ||
-          job.sourceItems.some(sourceItem => sourceItem.path.startsWith(explorer.currentPath));
+          job.sourceItems.some(sourceItem =>
+            sourceItem.path.startsWith(explorer.currentPath),
+          );
 
         if (affectsCurrentPath) {
           explorer.requestReload();
-          setLastUserAction('Liste kopyalama veya taşıma sonrası yenilendi');
         }
       });
     });
@@ -199,25 +176,17 @@ export const ExplorerScreen = (): React.JSX.Element => {
     return unsubscribe;
   }, [explorer.currentPath, explorer.requestReload]);
 
-  useEffect(() => {
-    if (!isDrawerOpen) {
-      return;
-    }
+  const openDrawer = useCallback(() => {
+    setDrawerOpen(true);
+  }, []);
 
-    if (explorer.mode === 'browser' || explorer.mode === 'home') {
-      return;
-    }
-
+  const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
-  }, [explorer.mode, isDrawerOpen]);
+  }, []);
 
   const handleHomeEntryPress = useCallback(
     (entryId: ExplorerHomeEntryId) => {
       setDrawerOpen(false);
-      setLastUserAction(`Ana ekran girişi: ${entryId}`);
-      void appDiagnostics.recordBreadcrumb('ExplorerDashboard', 'Home entry pressed', {
-        entryId,
-      });
 
       try {
         setInteractionError(null);
@@ -234,13 +203,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
         explorer.openPlaceholderView(action.placeholder);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Ana ekran girişi açılamadı';
+          error instanceof Error ? error.message : 'Bu bölüm açılamadı.';
 
         setInteractionError(message);
-        setLastUserAction(`Dashboard hata: ${message}`);
-        void appDiagnostics.recordError('ExplorerDashboard', error, {
-          entryId,
-        });
         explorer.openPlaceholderView(
           createUnsupportedCategoryPlaceholder(entryId, message),
         );
@@ -248,14 +213,6 @@ export const ExplorerScreen = (): React.JSX.Element => {
     },
     [explorer],
   );
-
-  const openDrawer = useCallback(() => {
-    setDrawerOpen(true);
-  }, []);
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-  }, []);
 
   const handleDrawerLocationPress = useCallback(
     (locationId: 'home' | 'internal-storage' | 'system' | 'trash') => {
@@ -284,10 +241,110 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const handleDrawerNodePress = useCallback(
     (node: (typeof explorer.recentOpenedNodes)[number]) => {
       closeDrawer();
-      explorer.openNode(node);
+      void explorer.openNode(node);
     },
     [closeDrawer, explorer],
   );
+
+  const handleOpenSettings = useCallback(() => {
+    closeDrawer();
+    navigation.navigate('Settings');
+  }, [closeDrawer, navigation]);
+
+  const handleCopySelection = useCallback(() => {
+    operations.copySelection();
+    explorer.clearSelection();
+  }, [explorer, operations]);
+
+  const handleMoveSelection = useCallback(() => {
+    operations.cutSelection();
+    explorer.clearSelection();
+  }, [explorer, operations]);
+
+  const handlePasteClipboard = useCallback(async () => {
+    try {
+      await operations.pasteIntoCurrentFolder();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Öğeler yapıştırılamadı.';
+      Alert.alert('Yapıştırma başarısız', message);
+    }
+  }, [operations]);
+
+  const handleShareSelection = useCallback(async () => {
+    if (selectedNodes.length === 0) {
+      return;
+    }
+
+    try {
+      await Share.share({
+        title: 'Öğeleri gönder',
+        message: selectedNodes.map(node => node.path).join('\n'),
+      });
+      explorer.clearSelection();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Öğeler paylaşılamadı.';
+      Alert.alert('Gönderim başarısız', message);
+    }
+  }, [explorer, selectedNodes]);
+
+  const handleOpenSelected = useCallback(() => {
+    if (selectedNodes.length === 0) {
+      return;
+    }
+
+    const primaryNode = selectedNodes[0];
+
+    if (!primaryNode) {
+      return;
+    }
+
+    explorer.clearSelection();
+    void explorer.openNode(primaryNode);
+  }, [explorer, selectedNodes]);
+
+  const handleHideSelection = useCallback(async () => {
+    if (selectedNodes.length === 0) {
+      return;
+    }
+
+    try {
+      for (const node of selectedNodes) {
+        if (node.name.startsWith('.')) {
+          continue;
+        }
+
+        await localFileSystemBridge.renameEntry(node.path, `.${node.name}`);
+      }
+
+      explorer.clearSelection();
+      explorer.requestReload();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Öğeler gizlenemedi.';
+      Alert.alert('İşlem tamamlanamadı', message);
+    }
+  }, [explorer, selectedNodes]);
+
+  const handleCreateTextFile = useCallback(async () => {
+    try {
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:]/g, '-')
+        .replace('T', ' ')
+        .slice(0, 16);
+      const fileName = `Yeni dosya ${timestamp}.txt`;
+
+      await localFileSystemBridge.createTextFile(explorer.currentPath, fileName, '');
+      explorer.clearSelection();
+      explorer.requestReload();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Yeni dosya oluşturulamadı.';
+      Alert.alert('Dosya oluşturulamadı', message);
+    }
+  }, [explorer]);
 
   const renderItem = useCallback(
     ({item}: {item: (typeof explorer.nodes)[number]}) => (
@@ -296,18 +353,18 @@ export const ExplorerScreen = (): React.JSX.Element => {
         onLongPress={explorer.toggleSelection}
         onPress={node => {
           setInteractionError(null);
-          setLastUserAction(`Liste öğesi: ${node.name}`);
-          void appDiagnostics.recordBreadcrumb('ExplorerDirectory', 'Node pressed', {
-            nodeId: node.id,
-            path: node.path,
-            kind: node.kind,
-          });
-          explorer.openNode(node);
+
+          if (explorer.selectedNodeIds.length > 0) {
+            explorer.toggleSelection(node);
+            return;
+          }
+
+          void explorer.openNode(node);
         }}
         selected={selectedIdSet.has(item.id)}
       />
     ),
-    [explorer.openNode, explorer.toggleSelection, selectedIdSet],
+    [explorer, selectedIdSet],
   );
 
   const directoryHeader = useMemo(
@@ -317,58 +374,11 @@ export const ExplorerScreen = (): React.JSX.Element => {
           canGoBack={explorer.canGoBack}
           currentPath={explorer.currentPath}
           currentPathLabel={explorer.currentPathLabel}
-          onCopySelection={operations.copySelection}
-          onCutSelection={operations.cutSelection}
           onOpenDrawer={openDrawer}
           onGoBack={explorer.goBack}
           selectedCount={explorer.selectedNodeIds.length}
         />
-
-        {operations.clipboard ? (
-          <SectionCard style={{marginBottom: theme.spacing.lg}}>
-            <AppText weight="semibold">
-              Pano: {operations.clipboard.mode === 'copy' ? 'Kopyala' : 'Kes'}
-            </AppText>
-            <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-              {operations.clipboard.items.length} öğe sonraki adımda yapıştırma
-              operasyonu için hazır.
-            </AppText>
-            <View
-              style={{
-                marginTop: theme.spacing.md,
-                flexDirection: 'row',
-                gap: theme.spacing.sm,
-              }}>
-              <Pressable
-                onPress={() => {
-                  void operations.pasteIntoCurrentFolder();
-                }}
-                style={{
-                  borderRadius: theme.radii.lg,
-                  backgroundColor: theme.colors.primary,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: theme.spacing.sm,
-                }}>
-                <AppText style={{color: '#FFFFFF'}} weight="semibold">
-                  Yapıştır
-                </AppText>
-              </Pressable>
-              <Pressable
-                onPress={operations.clearClipboard}
-                style={{
-                  borderRadius: theme.radii.lg,
-                  backgroundColor: theme.colors.surfaceMuted,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: theme.spacing.sm,
-                }}>
-                <AppText weight="semibold">Temizle</AppText>
-              </Pressable>
-            </View>
-          </SectionCard>
-        ) : null}
-
         {explorer.errorMessage ? <InlineError message={explorer.errorMessage} /> : null}
-
         <View style={{marginBottom: theme.spacing.md}} />
       </>
     ),
@@ -378,20 +388,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
       explorer.currentPathLabel,
       explorer.errorMessage,
       explorer.goBack,
-      openDrawer,
       explorer.selectedNodeIds.length,
-      operations.clearClipboard,
-      operations.clipboard,
-      operations.copySelection,
-      operations.cutSelection,
-      operations.pasteIntoCurrentFolder,
-      theme.colors.primary,
-      theme.colors.surfaceMuted,
-      theme.radii.lg,
-      theme.spacing.lg,
+      openDrawer,
       theme.spacing.md,
-      theme.spacing.sm,
-      theme.spacing.xs,
     ],
   );
 
@@ -409,8 +408,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
         <EmptyState
           description={explorer.errorMessage}
           icon={explorer.activeEmptyState?.icon ?? genericDirectoryEmptyState.icon}
-          supportingText="Kaynak geçici olarak açılamadı. Başka bir kategoriye dönebilir veya yeniden deneyebilirsiniz."
-          title="Kaynak yüklenemedi"
+          supportingText="Farklı bir klasöre geçebilir veya depolama erişim iznini kontrol edebilirsiniz."
+          title="Klasör açılamadı"
         />
       );
     }
@@ -421,7 +420,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
       <EmptyState
         description={emptyState.description}
         icon={emptyState.icon}
-        supportingText="Bu görünüm bilinçli olarak boş ekran üretmez; kategori akışı sağlıklı şekilde devam eder."
+        supportingText="Bu klasöre yeni içerik eklendiğinde burada görünür."
         title={emptyState.title}
       />
     );
@@ -436,49 +435,48 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const requestStorageAccess = useCallback(async () => {
     try {
       setInteractionError(null);
-      setLastUserAction('Depolama izni ekranı açılıyor');
       await storagePermissionBridge.requestAccess();
-      void appDiagnostics.recordBreadcrumb(
-        'StoragePermission',
-        'Opened all files access settings',
-      );
-      await refreshDiagnostics();
+      await refreshStorageAccessStatus();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'İzin ekranı açılamadı';
+        error instanceof Error ? error.message : 'İzin ekranı açılamadı.';
       setInteractionError(message);
-      setLastUserAction(`İzin hatası: ${message}`);
-      void appDiagnostics.recordError('StoragePermission', error);
-      await refreshDiagnostics();
     }
-  }, [refreshDiagnostics]);
+  }, [refreshStorageAccessStatus]);
 
-  const clearDiagnostics = useCallback(async () => {
-    await appDiagnostics.clear();
-    await refreshDiagnostics();
-    setInteractionError(null);
-    setLastUserAction('Tanı kayıtları temizlendi');
-  }, [refreshDiagnostics]);
-
-  const diagnosticsSummary = useMemo(
-    () =>
-      [
-        `Mod: ${explorer.mode}`,
-        `Yol: ${explorer.currentPath}`,
-        `Öğe sayısı: ${explorer.nodes.length}`,
-        `Yükleniyor: ${explorer.isLoading ? 'evet' : 'hayır'}`,
-        `İzin: ${storageAccessStatus}`,
-        `Son aksiyon: ${lastUserAction}`,
-      ].join(' | '),
-    [
-      explorer.currentPath,
-      explorer.isLoading,
-      explorer.mode,
-      explorer.nodes.length,
-      lastUserAction,
-      storageAccessStatus,
-    ],
-  );
+  const drawerOverlay = isDrawerOpen ? (
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.28)',
+      }}>
+      <Pressable style={{flex: 1}} onPress={closeDrawer}>
+        <View />
+      </Pressable>
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+        }}>
+        <ExplorerSideDrawer
+          activeTab={drawerTab}
+          favorites={favoriteItems}
+          onClose={closeDrawer}
+          onOpenLocation={handleDrawerLocationPress}
+          onOpenNode={handleDrawerNodePress}
+          onOpenSettings={handleOpenSettings}
+          onSelectTab={setDrawerTab}
+          recentItems={explorer.recentOpenedNodes}
+        />
+      </View>
+    </View>
+  ) : null;
 
   if (explorer.mode === 'home') {
     return (
@@ -499,38 +497,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
             onSelectEntry={handleHomeEntryPress}
           />
         </ScrollView>
-        {isDrawerOpen ? (
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.28)',
-            }}>
-            <Pressable style={{flex: 1}} onPress={closeDrawer}>
-              <View />
-            </Pressable>
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: 0,
-              }}>
-              <ExplorerSideDrawer
-                activeTab={drawerTab}
-                favorites={favoriteItems}
-                onClose={closeDrawer}
-                onOpenLocation={handleDrawerLocationPress}
-                onOpenNode={handleDrawerNodePress}
-                onSelectTab={setDrawerTab}
-                recentItems={explorer.recentOpenedNodes}
-              />
-            </View>
-          </View>
-        ) : null}
+        {drawerOverlay}
       </ScreenContainer>
     );
   }
@@ -545,21 +512,22 @@ export const ExplorerScreen = (): React.JSX.Element => {
             paddingTop: theme.spacing.md,
           }}
           showsVerticalScrollIndicator={false}>
+          <ExplorerHeader
+            canGoBack={explorer.canGoBack}
+            currentPath={explorer.currentPath}
+            currentPathLabel={explorer.placeholderView.title}
+            onOpenDrawer={openDrawer}
+            onGoBack={explorer.goBack}
+            selectedCount={0}
+          />
           {interactionError ? <InlineError message={interactionError} /> : null}
           <ExplorerPlaceholderView
             onBack={explorer.goBack}
             placeholder={explorer.placeholderView}
             providers={providers}
           />
-          <ExplorerDiagnosticsPanel
-            entries={diagnosticEntries}
-            onClear={clearDiagnostics}
-            onRefresh={() => {
-              void refreshDiagnostics();
-            }}
-            summary={diagnosticsSummary}
-          />
         </ScrollView>
+        {drawerOverlay}
       </ScreenContainer>
     );
   }
@@ -574,11 +542,25 @@ export const ExplorerScreen = (): React.JSX.Element => {
             paddingTop: theme.spacing.md,
           }}
           showsVerticalScrollIndicator={false}>
+          <ExplorerHeader
+            canGoBack={explorer.canGoBack}
+            currentPath={explorer.previewNode.path}
+            currentPathLabel={explorer.previewNode.name}
+            onOpenDrawer={openDrawer}
+            onGoBack={explorer.goBack}
+            selectedCount={0}
+          />
           <FilePreviewView node={explorer.previewNode} onBack={explorer.goBack} />
         </ScrollView>
+        {drawerOverlay}
       </ScreenContainer>
     );
   }
+
+  const bottomInset =
+    explorer.selectedNodeIds.length > 0 || operations.clipboard
+      ? 128
+      : theme.spacing.xxl;
 
   return (
     <ScreenContainer style={{paddingHorizontal: 0, paddingTop: 0}}>
@@ -591,66 +573,67 @@ export const ExplorerScreen = (): React.JSX.Element => {
           key={explorer.currentPath}
           data={explorer.nodes}
           extraData={explorer.selectedNodeIds}
+          initialNumToRender={8}
           keyExtractor={item => item.id}
+          ListEmptyComponent={emptyComponent}
           ListHeaderComponent={directoryHeader}
           ItemSeparatorComponent={() => <View style={{height: theme.spacing.sm}} />}
-          renderItem={renderItem}
-          ListEmptyComponent={emptyComponent}
-          ListFooterComponent={
-            <ExplorerDiagnosticsPanel
-              entries={diagnosticEntries}
-              onClear={clearDiagnostics}
-              onRefresh={() => {
-                void refreshDiagnostics();
-              }}
-              summary={diagnosticsSummary}
-            />
-          }
-          initialNumToRender={8}
           maxToRenderPerBatch={8}
+          removeClippedSubviews
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
           updateCellsBatchingPeriod={16}
           windowSize={5}
-          removeClippedSubviews
-          showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingBottom: theme.spacing.xxl,
+            paddingBottom: bottomInset,
             paddingHorizontal: theme.spacing.md,
             paddingTop: theme.spacing.md,
             flexGrow: 1,
           }}
         />
-        {isDrawerOpen ? (
+        {explorer.selectedNodeIds.length > 0 ? (
           <View
             style={{
               position: 'absolute',
-              top: 0,
               right: 0,
               bottom: 0,
               left: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.28)',
             }}>
-            <Pressable style={{flex: 1}} onPress={closeDrawer}>
-              <View />
-            </Pressable>
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: 0,
-              }}>
-              <ExplorerSideDrawer
-                activeTab={drawerTab}
-                favorites={favoriteItems}
-                onClose={closeDrawer}
-                onOpenLocation={handleDrawerLocationPress}
-                onOpenNode={handleDrawerNodePress}
-                onSelectTab={setDrawerTab}
-                recentItems={explorer.recentOpenedNodes}
-              />
-            </View>
+            <ExplorerSelectionActionBar
+              selectedCount={explorer.selectedNodeIds.length}
+              onCopy={handleCopySelection}
+              onCreateFile={() => {
+                void handleCreateTextFile();
+              }}
+              onHide={() => {
+                void handleHideSelection();
+              }}
+              onMove={handleMoveSelection}
+              onOpenWith={handleOpenSelected}
+              onShare={() => {
+                void handleShareSelection();
+              }}
+            />
+          </View>
+        ) : operations.clipboard ? (
+          <View
+            style={{
+              position: 'absolute',
+              right: 0,
+              bottom: 0,
+              left: 0,
+            }}>
+            <ExplorerClipboardActionBar
+              itemCount={operations.clipboard.items.length}
+              mode={operations.clipboard.mode}
+              onClear={operations.clearClipboard}
+              onPaste={() => {
+                void handlePasteClipboard();
+              }}
+            />
           </View>
         ) : null}
+        {drawerOverlay}
       </View>
     </ScreenContainer>
   );

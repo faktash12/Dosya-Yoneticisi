@@ -1,6 +1,6 @@
 import React from 'react';
 import {Pressable, View} from 'react-native';
-import {ArrowLeft, Copy, Menu, Scissors} from 'lucide-react-native';
+import {ArrowLeft, Menu} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
@@ -13,8 +13,6 @@ interface ExplorerHeaderProps {
   canGoBack: boolean;
   onOpenDrawer: () => void;
   onGoBack: () => void;
-  onCopySelection: () => void;
-  onCutSelection: () => void;
 }
 
 export const ExplorerHeader = ({
@@ -24,8 +22,6 @@ export const ExplorerHeader = ({
   canGoBack,
   onOpenDrawer,
   onGoBack,
-  onCopySelection,
-  onCutSelection,
 }: ExplorerHeaderProps): React.JSX.Element => {
   const theme = useAppTheme();
 
@@ -74,31 +70,6 @@ export const ExplorerHeader = ({
               {currentPath}
             </AppText>
           </View>
-        </View>
-
-        <View style={{flexDirection: 'row', gap: theme.spacing.sm}}>
-          <Pressable
-            disabled={selectedCount === 0}
-            onPress={onCopySelection}
-            style={{
-              opacity: selectedCount === 0 ? 0.45 : 1,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.primaryMuted,
-              padding: theme.spacing.md,
-            }}>
-            <Copy color={theme.colors.primary} size={18} />
-          </Pressable>
-          <Pressable
-            disabled={selectedCount === 0}
-            onPress={onCutSelection}
-            style={{
-              opacity: selectedCount === 0 ? 0.45 : 1,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surfaceMuted,
-              padding: theme.spacing.md,
-            }}>
-            <Scissors color={theme.colors.text} size={18} />
-          </Pressable>
         </View>
       </View>
 

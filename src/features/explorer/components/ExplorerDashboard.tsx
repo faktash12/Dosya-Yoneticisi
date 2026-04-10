@@ -1,6 +1,6 @@
 import React from 'react';
 import {Pressable, View} from 'react-native';
-import {FolderSearch, Menu} from 'lucide-react-native';
+import {Menu} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {CategoryShortcutCard} from '@/features/explorer/components/CategoryShortcutCard';
@@ -50,46 +50,11 @@ export const ExplorerDashboard = ({
           <AppText style={{fontSize: theme.typography.title}} weight="bold">
             Dosya Yöneticisi
           </AppText>
-          <AppText
-            tone="muted"
-            style={{fontSize: theme.typography.caption, marginTop: theme.spacing.xs}}>
-            Depolama alanları ve sık kullanılan kategoriler
-          </AppText>
-        </View>
-
-        <View style={{flexDirection: 'row', gap: theme.spacing.sm}}>
-          <View
-            style={{
-              height: 40,
-              width: 40,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surface,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <FolderSearch color={theme.colors.text} size={18} />
-          </View>
-          <View
-            style={{
-              minWidth: 40,
-              height: 40,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surface,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingHorizontal: theme.spacing.sm,
-            }}>
-            <AppText weight="bold">•••</AppText>
-          </View>
         </View>
       </View>
 
       <ExplorerHomeSection
-        description="Depolama girişleri buradan doğrudan tarayıcı moduna geçer."
+        description="Depolama girişlerinden doğrudan klasör görünümüne geçin."
         title="Depolama">
         <View style={{gap: theme.spacing.md}}>
           {storageCards.map(item => (
@@ -99,7 +64,7 @@ export const ExplorerDashboard = ({
       </ExplorerHomeSection>
 
       <ExplorerHomeSection
-        description="Sık kullanılan kaynaklara tek dokunuşla ulaşın."
+        description=""
         title="Kategoriler">
         <View
           style={{

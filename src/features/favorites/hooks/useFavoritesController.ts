@@ -1,10 +1,10 @@
 import {Alert} from 'react-native';
 import {useCallback, useEffect} from 'react';
 import {useNavigation} from '@react-navigation/native';
-import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 
 import {appContainer} from '@/app/di/container';
-import type {MainTabParamList} from '@/app/navigation/types';
+import type {RootStackParamList} from '@/app/navigation/types';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import {getFileOpenMode} from '@/features/explorer/utils/fileOpenSupport';
@@ -13,7 +13,7 @@ import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
 
 export const useFavoritesController = () => {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const items = useFavoritesStore(state => state.items);
   const isLoading = useFavoritesStore(state => state.isLoading);
   const setItems = useFavoritesStore(state => state.setItems);

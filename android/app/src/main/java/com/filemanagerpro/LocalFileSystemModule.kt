@@ -108,6 +108,63 @@ class LocalFileSystemModule(
   }
 
   @ReactMethod
+  fun renameEntry(sourcePath: String, nextName: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val source = resolveExistingEntry(sourcePath)
+      val sanitizedName = nextName.trim()
+      if (sanitizedName.isBlank()) {
+        throw IllegalArgumentException("Yeni ad boş olamaz.")
+      }
+
+      val destination = File(source.parentFile, sanitizedName).canonicalFile
+      ensureWithinRoot(destination.absolutePath)
+
+      if (destination.exists() && source.canonicalPath != destination.canonicalPath) {
+        throw IllegalArgumentException("Aynı adda bir öğe zaten mevcut.")
+      }
+
+      val renamed = source.renameTo(destination)
+      if (!renamed) {
+        throw IOException("Öğe yeniden adlandırılamadı: ${source.absolutePath}")
+      }
+
+      promise.resolve(destination.absolutePath)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_RENAME_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun createTextFile(
+    directoryPath: String,
+    fileName: String,
+    content: String,
+    promise: Promise,
+  ) {
+    try {
+      requireStorageAccess()
+      val directory = resolveDirectory(directoryPath)
+      val sanitizedName = fileName.trim()
+      if (sanitizedName.isBlank()) {
+        throw IllegalArgumentException("Dosya adı boş olamaz.")
+      }
+
+      val target = File(directory, sanitizedName).canonicalFile
+      ensureWithinRoot(target.absolutePath)
+
+      if (target.exists()) {
+        throw IllegalArgumentException("Aynı adda bir dosya zaten mevcut.")
+      }
+
+      target.writeText(content, StandardCharsets.UTF_8)
+      promise.resolve(target.absolutePath)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_CREATE_TEXT_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
   fun copyEntry(
     sourcePath: String,
     destinationDirectoryPath: String,
@@ -196,14 +253,16 @@ class LocalFileSystemModule(
   }
 
   private fun resolveEntryWithinRoot(path: String): File {
-    val root = getExternalStorageRoot().canonicalFile
     val target = File(path).canonicalFile
+    ensureWithinRoot(target.path)
+    return target
+  }
 
-    if (!target.path.startsWith(root.path)) {
+  private fun ensureWithinRoot(path: String) {
+    val root = getExternalStorageRoot().canonicalFile
+    if (!path.startsWith(root.path)) {
       throw IllegalArgumentException("Bu kaynak uygulamanın erişim alanı dışında: $path")
     }
-
-    return target
   }
 
   private fun resolveDestinationEntry(

@@ -47,14 +47,15 @@ export const CategoryShortcutCard = ({
       {({pressed}) => (
         <SectionCard
           style={{
-            minHeight: 148,
-            justifyContent: 'space-between',
-            padding: theme.spacing.md,
+            minHeight: 116,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: theme.spacing.sm,
+            paddingVertical: theme.spacing.lg,
             opacity: pressed ? 0.9 : 1,
           }}>
           <View
             style={{
-              alignSelf: 'flex-start',
               borderRadius: theme.radii.lg,
               backgroundColor: theme.colors.primaryMuted,
               padding: theme.spacing.md,
@@ -62,20 +63,11 @@ export const CategoryShortcutCard = ({
             <Icon color={theme.colors.primary} size={20} />
           </View>
 
-          <View style={{marginTop: theme.spacing.lg}}>
+          <View style={{marginTop: theme.spacing.md}}>
             <AppText
-              style={{fontSize: theme.typography.body, lineHeight: 20}}
+              style={{fontSize: theme.typography.body, lineHeight: 20, textAlign: 'center'}}
               weight="semibold">
               {item.title}
-            </AppText>
-            <AppText
-              tone="muted"
-              style={{
-                fontSize: theme.typography.caption,
-                lineHeight: 18,
-                marginTop: theme.spacing.xs,
-              }}>
-              {item.subtitle}
             </AppText>
           </View>
         </SectionCard>
