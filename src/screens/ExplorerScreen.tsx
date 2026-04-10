@@ -4,26 +4,31 @@ import {
   Alert,
   BackHandler,
   FlatList,
+  Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
+  Switch,
+  TextInput,
   View,
 } from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {
-  ArrowDownAZ,
-  ArrowUpAZ,
   Check,
   Eye,
   EyeOff,
   FilePlus2,
+  FileText,
   Folder,
+  HardDrive,
   Image as ImageIcon,
   LayoutGrid,
   LayoutList,
   RefreshCcw,
   Settings,
+  Trash2,
 } from 'lucide-react-native';
 
 import {appContainer} from '@/app/di/container';
@@ -33,7 +38,7 @@ import {AppText} from '@/components/common/AppText';
 import {EmptyState} from '@/components/feedback/EmptyState';
 import {InlineError} from '@/components/feedback/InlineError';
 import {ScreenContainer} from '@/components/layout/ScreenContainer';
-import {TRASH_DIRECTORY} from '@/constants/app';
+import {ROOT_DIRECTORY, TRASH_DIRECTORY} from '@/constants/app';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useCloudStore} from '@/features/cloud/store/cloud.store';
 import {ExplorerClipboardActionBar} from '@/features/explorer/components/ExplorerClipboardActionBar';
@@ -47,8 +52,9 @@ import {FilePreviewView} from '@/features/explorer/components/FilePreviewView';
 import {StorageAccessPrompt} from '@/features/explorer/components/StorageAccessPrompt';
 import {useExplorerController} from '@/features/explorer/hooks/useExplorerController';
 import {useExplorerOperations} from '@/features/explorer/hooks/useExplorerOperations';
+import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import {useTrashStore} from '@/features/explorer/store/trash.store';
-import type {ExplorerHomeEntryId} from '@/features/explorer/types/explorer.types';
+import type {ExplorerExtendedHomeEntryId} from '@/features/explorer/types/explorer.types';
 import {
   createUnsupportedCategoryPlaceholder,
   resolveExplorerCategoryAction,
@@ -66,6 +72,27 @@ import {formatAbsoluteDate} from '@/utils/formatAbsoluteDate';
 import {formatBytes} from '@/utils/formatBytes';
 import {getParentPath, getPathSegments} from '@/utils/path';
 
+interface BreadcrumbItem {
+  label: string;
+  path: string;
+}
+
+interface CreateModalState {
+  type: 'folder' | 'text' | 'rename';
+  title: string;
+  confirmLabel: string;
+  value: string;
+}
+
+interface InstalledAppItem {
+  packageName: string;
+  label: string;
+  sizeBytes: number;
+  sourceDir: string;
+  iconBase64?: string | null;
+  isSystemApp: boolean;
+}
+
 const genericDirectoryEmptyState = {
   title: 'Bu klasörde henüz içerik yok',
   description:
@@ -74,21 +101,21 @@ const genericDirectoryEmptyState = {
 };
 
 const sortModes = [
-  {id: 'name-asc', label: 'Ad artan'},
-  {id: 'name-desc', label: 'Ad azalan'},
-  {id: 'size-asc', label: 'Boyut artan'},
-  {id: 'size-desc', label: 'Boyut azalan'},
-  {id: 'date-asc', label: 'Tarih artan'},
-  {id: 'date-desc', label: 'Tarih azalan'},
-  {id: 'type-asc', label: 'Tür artan'},
-  {id: 'type-desc', label: 'Tür azalan'},
+  {id: 'name-asc', label: 'Ad Artan', kind: 'name'},
+  {id: 'name-desc', label: 'Ad Azalan', kind: 'name'},
+  {id: 'size-asc', label: 'Boyut Artan', kind: 'size'},
+  {id: 'size-desc', label: 'Boyut Azalan', kind: 'size'},
+  {id: 'date-asc', label: 'Tarih Artan', kind: 'date'},
+  {id: 'date-desc', label: 'Tarih Azalan', kind: 'date'},
+  {id: 'type-asc', label: 'Tür Artan', kind: 'type'},
+  {id: 'type-desc', label: 'Tür Azalan', kind: 'type'},
 ] as const;
 
 const viewModes = [
-  {id: 'details', label: 'Detaylı', icon: LayoutList},
-  {id: 'compact', label: 'Küçük detaylı', icon: LayoutList},
-  {id: 'large-icons', label: 'Büyük simgeli', icon: LayoutGrid},
-  {id: 'small-icons', label: 'Küçük simgeli', icon: LayoutGrid},
+  {id: 'details', label: 'Simge Detaylı'},
+  {id: 'compact', label: 'Simge Küçük Detaylı'},
+  {id: 'large-icons', label: 'Simge Büyük Simgeli'},
+  {id: 'small-icons', label: 'Simge Küçük Simgeli'},
 ] as const;
 
 const segmentLabelMap: Record<string, string> = {
@@ -103,8 +130,17 @@ const segmentLabelMap: Record<string, string> = {
   '.dosya-yoneticisi-trash': 'Çöp Kutusu',
 };
 
-const getDisplaySegments = (path: string): string[] =>
-  getPathSegments(path).map(segment => segmentLabelMap[segment] ?? segment);
+const getDisplayLabelForSegment = (segment: string): string =>
+  segmentLabelMap[segment] ?? segment;
+
+const isImageNode = (node: FileSystemNode): boolean => {
+  const extension = node.extension?.toLowerCase();
+  return (
+    node.kind === 'file' &&
+    (['img', 'jpg', 'jpeg', 'png', 'webp', 'gif'].includes(extension ?? '') ||
+      node.mimeType?.startsWith('image/') === true)
+  );
+};
 
 const getNodeSummary = (node: FileSystemNode): string =>
   node.kind === 'directory'
@@ -152,6 +188,87 @@ const sortNodes = (
   return sorted;
 };
 
+const ViewModeGlyph = ({
+  modeId,
+  color,
+}: {
+  modeId: (typeof viewModes)[number]['id'];
+  color: string;
+}): React.JSX.Element => {
+  if (modeId === 'large-icons') {
+    return <View style={{height: 16, width: 16, backgroundColor: color}} />;
+  }
+
+  if (modeId === 'small-icons') {
+    return (
+      <View style={{flexDirection: 'row', flexWrap: 'wrap', width: 16, height: 16, gap: 2}}>
+        {[0, 1, 2, 3].map(index => (
+          <View
+            key={index}
+            style={{height: 7, width: 7, backgroundColor: color}}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  if (modeId === 'compact') {
+    return (
+      <View style={{gap: 2}}>
+        {[0, 1].map(index => (
+          <View
+            key={index}
+            style={{flexDirection: 'row', alignItems: 'center', gap: 2}}>
+            <View style={{height: 4, width: 4, backgroundColor: color}} />
+            <View style={{height: 2, width: 10, backgroundColor: color}} />
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={{gap: 2}}>
+      {[0, 1].map(index => (
+        <View
+          key={index}
+          style={{flexDirection: 'row', alignItems: 'center', gap: 2}}>
+          <View style={{height: 5, width: 5, backgroundColor: color}} />
+          <View style={{height: 2, width: 12, backgroundColor: color}} />
+        </View>
+      ))}
+    </View>
+  );
+};
+
+const SortModeGlyph = ({
+  mode,
+  color,
+}: {
+  mode: (typeof sortModes)[number];
+  color: string;
+}): React.JSX.Element => {
+  const isAscending = mode.id.endsWith('asc');
+
+  if (mode.kind === 'name') {
+    return isAscending ? (
+      <LayoutList color={color} size={16} />
+    ) : (
+      <LayoutGrid color={color} size={16} />
+    );
+  }
+
+  if (mode.kind === 'size') {
+    return <HardDrive color={color} size={16} />;
+  }
+
+  if (mode.kind === 'date') {
+    return <RefreshCcw color={color} size={16} />;
+  }
+
+  return <FileText color={color} size={16} />;
+};
+
 export const ExplorerScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const theme = useAppTheme();
@@ -164,6 +281,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const setFavoritesLoading = useFavoritesStore(state => state.setLoading);
   const addFavoriteItem = useFavoritesStore(state => state.restoreFavorite);
   const removeFavoriteItem = useFavoritesStore(state => state.removeFavorite);
+  const removeRecentNode = useExplorerStore(state => state.removeRecentNode);
+  const clearRecentNodes = useExplorerStore(state => state.clearRecentNodes);
   const trashEntries = useTrashStore(state => state.entries);
   const upsertTrashEntry = useTrashStore(state => state.upsertEntry);
   const removeTrashEntry = useTrashStore(state => state.removeEntry);
@@ -180,16 +299,28 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletePermanently, setDeletePermanently] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<FileSystemNode[]>([]);
+  const [isSearchLoading, setSearchLoading] = useState(false);
   const [isSearchOpen, setSearchOpen] = useState(false);
   const [isSortMenuOpen, setSortMenuOpen] = useState(false);
   const [isMoreMenuOpen, setMoreMenuOpen] = useState(false);
   const [isCreateMenuOpen, setCreateMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'details' | 'compact' | 'large-icons' | 'small-icons'>('details');
+  const [isRefreshing, setRefreshing] = useState(false);
+  const [createModalState, setCreateModalState] = useState<CreateModalState | null>(null);
+  const [renameTargetNode, setRenameTargetNode] = useState<FileSystemNode | null>(null);
+  const [usbRoots, setUsbRoots] = useState<string[]>([]);
+  const [installedApps, setInstalledApps] = useState<InstalledAppItem[]>([]);
+  const [isAppsLoading, setAppsLoading] = useState(false);
+  const [selectedAppPackage, setSelectedAppPackage] = useState<string | null>(null);
+  const [recentContextNode, setRecentContextNode] = useState<FileSystemNode | null>(null);
   const selectedIdSet = useMemo(() => new Set(explorer.selectedNodeIds), [explorer.selectedNodeIds]);
   const isTrashView = explorer.currentPath === TRASH_DIRECTORY;
   const isGridView = viewMode === 'large-icons' || viewMode === 'small-icons';
   const gridColumns = viewMode === 'small-icons' ? 4 : 3;
   const topMenuOffset = isSearchOpen ? 94 : 56;
+  const isAppsView =
+    explorer.mode === 'placeholder' && explorer.placeholderView?.kind === 'apps-info';
 
   const sortedNodes = useMemo(() => sortNodes(explorer.nodes, sortModeId), [explorer.nodes, sortModeId]);
   const filteredNodes = useMemo(() => {
@@ -197,18 +328,36 @@ export const ExplorerScreen = (): React.JSX.Element => {
       return sortedNodes;
     }
 
-    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
-    return sortedNodes.filter(node => node.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
-  }, [searchQuery, sortedNodes]);
-
-  const homeStorageItems = useMemo(() => {
-    if (!searchQuery.trim() || explorer.mode !== 'home') {
-      return storageCards;
+    if (explorer.mode === 'browser') {
+      return searchResults;
     }
 
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
-    return storageCards.filter(item => item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
-  }, [explorer.mode, searchQuery]);
+    return sortedNodes.filter(node => node.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
+  }, [explorer.mode, searchQuery, searchResults, sortedNodes]);
+
+  const homeStorageItems = useMemo(() => {
+    const resolvedStorageCards = storageCards.map(item =>
+      item.id === 'usb'
+        ? {
+            ...item,
+            isActive: usbRoots.length > 0,
+            usedLabel: usbRoots.length > 0 ? 'Bağlı' : 'Bağlı değil',
+            totalLabel: usbRoots.length > 0 ? 'USB hazır' : '',
+            usageRatio: usbRoots.length > 0 ? 1 : 0,
+          }
+        : item,
+    );
+
+    if (!searchQuery.trim() || explorer.mode !== 'home') {
+      return resolvedStorageCards;
+    }
+
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
+    return resolvedStorageCards.filter(item =>
+      item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery),
+    );
+  }, [explorer.mode, searchQuery, usbRoots.length]);
 
   const homeShortcutItems = useMemo(() => {
     if (!searchQuery.trim() || explorer.mode !== 'home') {
@@ -256,6 +405,113 @@ export const ExplorerScreen = (): React.JSX.Element => {
     void loadFavorites();
   }, [favoriteItems.length, setFavoriteItems, setFavoritesLoading]);
 
+  const refreshUsbRoots = useCallback(async () => {
+    try {
+      const roots = await localFileSystemBridge.getUsbRoots();
+      setUsbRoots(roots);
+    } catch {
+      setUsbRoots([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUsbRoots();
+    }, [refreshUsbRoots]),
+  );
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!isAppsView) {
+      setInstalledApps([]);
+      setSelectedAppPackage(null);
+      return;
+    }
+
+    const loadApps = async () => {
+      try {
+        setAppsLoading(true);
+        const applications = await localFileSystemBridge.listInstalledApps(false);
+
+        if (!isActive) {
+          return;
+        }
+
+        setInstalledApps(applications);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setInteractionError(
+          error instanceof Error ? error.message : 'Uygulamalar yüklenemedi.',
+        );
+      } finally {
+        if (isActive) {
+          setAppsLoading(false);
+        }
+      }
+    };
+
+    void loadApps();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAppsView]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!searchQuery.trim() || explorer.mode !== 'browser') {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const loadSearchResults = async () => {
+      try {
+        setSearchLoading(true);
+        const results = await localFileSystemBridge.searchDirectory(
+          explorer.currentPath,
+          searchQuery,
+          showHiddenFiles,
+        );
+
+        if (!isActive) {
+          return;
+        }
+
+        setSearchResults(sortNodes(results, sortModeId));
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setInteractionError(
+          error instanceof Error ? error.message : 'Arama tamamlanamadı.',
+        );
+      } finally {
+        if (isActive) {
+          setSearchLoading(false);
+        }
+      }
+    };
+
+    void loadSearchResults();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    explorer.currentPath,
+    explorer.mode,
+    searchQuery,
+    showHiddenFiles,
+    sortModeId,
+  ]);
+
   useEffect(() => {
     const cleanupExpiredTrash = async () => {
       const expiredEntries = removeExpiredTrashEntries(new Date().toISOString());
@@ -279,6 +535,12 @@ export const ExplorerScreen = (): React.JSX.Element => {
     setSearchOpen(false);
     setSearchQuery('');
   }, [explorer.currentPath, explorer.mode]);
+
+  useEffect(() => {
+    if (!explorer.isLoading && !isAppsLoading) {
+      setRefreshing(false);
+    }
+  }, [explorer.isLoading, isAppsLoading]);
 
   const refreshStorageAccessStatus = useCallback(async () => {
     try {
@@ -360,11 +622,35 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const handleHomeEntryPress = useCallback(
-    (entryId: ExplorerHomeEntryId) => {
+    (entryId: ExplorerExtendedHomeEntryId) => {
       setDrawerOpen(false);
       setInteractionError(null);
 
       try {
+        if (entryId === 'usb') {
+          const usbRoot = usbRoots.at(0);
+          if (usbRoot) {
+            explorer.openBrowserPath(usbRoot, {
+              categoryId: null,
+              emptyState: {
+                title: 'USB boş',
+                description:
+                  'Bağlı USB depolamada henüz görüntülenecek içerik bulunmuyor.',
+                icon: 'storage',
+              },
+            });
+            return;
+          }
+
+          explorer.openPlaceholderView(
+            createUnsupportedCategoryPlaceholder(
+              'USB',
+              'Bağlı bir USB/OTG depolama bulunamadı.',
+            ),
+          );
+          return;
+        }
+
         const action = resolveExplorerCategoryAction(entryId);
         if (action.kind === 'directory') {
           explorer.openBrowserPath(action.path, {
@@ -381,7 +667,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         explorer.openPlaceholderView(createUnsupportedCategoryPlaceholder(entryId, message));
       }
     },
-    [explorer],
+    [explorer, usbRoots],
   );
 
   const handleDrawerLocationPress = useCallback(
@@ -418,6 +704,48 @@ export const ExplorerScreen = (): React.JSX.Element => {
     (node: FileSystemNode) => removeFavoriteItem(node.id),
     [removeFavoriteItem],
   );
+
+  const handleClearRecent = useCallback(() => {
+    clearRecentNodes();
+    setRecentContextNode(null);
+  }, [clearRecentNodes]);
+
+  const handleLongPressRecentNode = useCallback((node: FileSystemNode) => {
+    setRecentContextNode(node);
+  }, []);
+
+  const handleRemoveRecentNode = useCallback(() => {
+    if (!recentContextNode) {
+      return;
+    }
+
+    removeRecentNode(recentContextNode.path);
+    setRecentContextNode(null);
+  }, [recentContextNode, removeRecentNode]);
+
+  const handleOpenRecentNodeLocation = useCallback(() => {
+    if (!recentContextNode) {
+      return;
+    }
+
+    const targetPath =
+      recentContextNode.kind === 'directory'
+        ? getParentPath(recentContextNode.path)
+        : getParentPath(recentContextNode.path);
+
+    closeDrawer();
+    setRecentContextNode(null);
+    explorer.openBrowserPath(targetPath, null);
+  }, [closeDrawer, explorer, recentContextNode]);
+
+  const handleAddRecentNodeToFavorites = useCallback(() => {
+    if (!recentContextNode) {
+      return;
+    }
+
+    addFavoriteItem(recentContextNode);
+    setRecentContextNode(null);
+  }, [addFavoriteItem, recentContextNode]);
 
   const handleCopySelection = useCallback(() => {
     operations.copySelection();
@@ -484,32 +812,82 @@ export const ExplorerScreen = (): React.JSX.Element => {
     }
   }, [explorer, selectedNodes]);
 
-  const handleCreateTextFile = useCallback(async () => {
-    try {
-      const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace('T', ' ').slice(0, 16);
-      await localFileSystemBridge.createTextFile(explorer.currentPath, `Yeni dosya ${timestamp}.txt`, '');
-      explorer.clearSelection();
-      explorer.requestReload();
-      setMoreMenuOpen(false);
-      setCreateMenuOpen(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Yeni dosya oluşturulamadı.';
-      Alert.alert('Dosya oluşturulamadı', message);
-    }
-  }, [explorer]);
+  const openCreateFolderModal = useCallback(() => {
+    setCreateModalState({
+      type: 'folder',
+      title: 'Klasör adını gir',
+      confirmLabel: 'Tamam',
+      value: '',
+    });
+    setCreateMenuOpen(false);
+    setMoreMenuOpen(false);
+  }, []);
 
-  const handleCreateDirectory = useCallback(async () => {
-    try {
-      const timestamp = new Date().toISOString().replace(/[:]/g, '-').replace('T', ' ').slice(0, 16);
-      await localFileSystemBridge.createDirectory(`${explorer.currentPath}/Yeni klasör ${timestamp}`);
-      explorer.requestReload();
-      setMoreMenuOpen(false);
-      setCreateMenuOpen(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Yeni klasör oluşturulamadı.';
-      Alert.alert('Klasör oluşturulamadı', message);
+  const openCreateTextModal = useCallback(() => {
+    setCreateModalState({
+      type: 'text',
+      title: 'Belge adını gir',
+      confirmLabel: 'Tamam',
+      value: '',
+    });
+    setCreateMenuOpen(false);
+    setMoreMenuOpen(false);
+  }, []);
+
+  const openRenameModal = useCallback(() => {
+    if (!primarySelectedNode) {
+      return;
     }
-  }, [explorer]);
+
+    setRenameTargetNode(primarySelectedNode);
+    setCreateModalState({
+      type: 'rename',
+      title: 'Yeni adı gir',
+      confirmLabel: 'Kaydet',
+      value: primarySelectedNode.name,
+    });
+  }, [primarySelectedNode]);
+
+  const handleSubmitCreateModal = useCallback(async () => {
+    if (!createModalState) {
+      return;
+    }
+
+    const nextValue = createModalState.value.trim();
+
+    if (!nextValue) {
+      Alert.alert('Eksik bilgi', 'Lütfen geçerli bir ad girin.');
+      return;
+    }
+
+    try {
+      if (createModalState.type === 'folder') {
+        await localFileSystemBridge.createDirectory(
+          `${explorer.currentPath}/${nextValue}`,
+        );
+      } else if (createModalState.type === 'text') {
+        const fileName = nextValue.toLowerCase().endsWith('.txt')
+          ? nextValue
+          : `${nextValue}.txt`;
+        await localFileSystemBridge.createTextFile(
+          explorer.currentPath,
+          fileName,
+          '',
+        );
+      } else if (renameTargetNode) {
+        await localFileSystemBridge.renameEntry(renameTargetNode.path, nextValue);
+        explorer.clearSelection();
+      }
+
+      setCreateModalState(null);
+      setRenameTargetNode(null);
+      explorer.requestReload();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'İşlem tamamlanamadı.';
+      Alert.alert('İşlem tamamlanamadı', message);
+    }
+  }, [createModalState, explorer, renameTargetNode]);
 
   const handleAddSelectionToFavorites = useCallback(() => {
     if (selectedNodes.length === 0) {
@@ -525,6 +903,20 @@ export const ExplorerScreen = (): React.JSX.Element => {
       setDeleteConfirmVisible(true);
     }
   }, [selectedNodes.length]);
+
+  const handleUninstallSelectedApp = useCallback(async () => {
+    if (!selectedAppPackage) {
+      return;
+    }
+
+    try {
+      await localFileSystemBridge.uninstallPackage(selectedAppPackage);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Uygulama kaldırma ekranı açılamadı.';
+      Alert.alert('Kaldırma başarısız', message);
+    }
+  }, [selectedAppPackage]);
 
   const handleRestoreSelection = useCallback(async () => {
     if (!isTrashView || selectedNodes.length === 0) {
@@ -605,13 +997,28 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
   const handleRefreshCurrent = useCallback(() => {
     setInteractionError(null);
-    explorer.requestReload();
+    setRefreshing(true);
+    if (explorer.mode === 'browser') {
+      explorer.requestReload();
+    }
+    if (explorer.mode === 'home') {
+      void refreshUsbRoots().finally(() => setRefreshing(false));
+    }
+    if (isAppsView) {
+      setAppsLoading(true);
+      void localFileSystemBridge
+        .listInstalledApps(false)
+        .then(applications => setInstalledApps(applications))
+        .finally(() => {
+          setAppsLoading(false);
+          setRefreshing(false);
+        });
+    }
     setMoreMenuOpen(false);
-  }, [explorer]);
+  }, [explorer, isAppsView, refreshUsbRoots]);
 
   const handleToggleHiddenFiles = useCallback(() => {
     setShowHiddenFiles(!showHiddenFiles);
-    setMoreMenuOpen(false);
   }, [setShowHiddenFiles, showHiddenFiles]);
 
   const handleOpenSettings = useCallback(() => {
@@ -661,30 +1068,139 @@ export const ExplorerScreen = (): React.JSX.Element => {
     setCreateMenuOpen(false);
   }, []);
 
-  const currentSegments = useMemo(() => {
+  const currentBreadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     if (explorer.mode === 'home') {
       return [];
     }
+
+    const buildDirectoryBreadcrumbs = (path: string) => {
+      const categoryAction =
+        explorer.activeDirectoryCategoryId != null
+          ? resolveExplorerCategoryAction(explorer.activeDirectoryCategoryId)
+          : null;
+      const categoryRootPath =
+        categoryAction?.kind === 'directory' && categoryAction.path !== ROOT_DIRECTORY
+          ? categoryAction.path
+          : null;
+
+      if (categoryRootPath && path.startsWith(categoryRootPath)) {
+        const rootRelativeSegments = getPathSegments(categoryRootPath);
+        const rootLabel = getDisplayLabelForSegment(
+          rootRelativeSegments.at(-1) ?? 'Ana bellek',
+        );
+        const items: BreadcrumbItem[] = [{label: rootLabel, path: categoryRootPath}];
+        const currentSegments = path.split('/').filter(Boolean);
+        const rootSegments = categoryRootPath.split('/').filter(Boolean);
+        const nestedSegments = currentSegments.slice(rootSegments.length);
+        let currentSegmentPath = categoryRootPath;
+
+        nestedSegments.forEach(segment => {
+          currentSegmentPath = `${currentSegmentPath}/${segment}`;
+          items.push({
+            label: getDisplayLabelForSegment(segment),
+            path: currentSegmentPath,
+          });
+        });
+
+        return items;
+      }
+
+      const rawSegments = getPathSegments(path);
+      return rawSegments.map((segment, index) => ({
+        label: getDisplayLabelForSegment(segment),
+        path:
+          index === 0
+            ? ROOT_DIRECTORY
+            : `${ROOT_DIRECTORY}/${rawSegments
+                .slice(1, index + 1)
+                .map(part =>
+                  part === 'Ana bellek'
+                    ? ''
+                    : Object.entries(segmentLabelMap).find(
+                        ([, label]) => label === part,
+                      )?.[0] ?? part,
+                )
+                .filter(Boolean)
+                .join('/')}`,
+      }));
+    };
+
     if (explorer.mode === 'browser') {
-      return getDisplaySegments(explorer.currentPath);
+      return buildDirectoryBreadcrumbs(explorer.currentPath);
     }
+
     if (explorer.mode === 'preview' && explorer.previewNode) {
-      return getDisplaySegments(explorer.previewNode.path);
+      const items = buildDirectoryBreadcrumbs(explorer.currentPath);
+      items.push({
+        label: explorer.previewNode.name,
+        path: explorer.currentPath,
+      });
+      return items;
     }
+
     if (explorer.mode === 'placeholder' && explorer.placeholderView) {
-      return [explorer.placeholderView.title];
+      return [{label: explorer.placeholderView.title, path: ROOT_DIRECTORY}];
     }
+
     return [];
-  }, [explorer.currentPath, explorer.mode, explorer.placeholderView, explorer.previewNode]);
+  }, [
+    explorer.activeDirectoryCategoryId,
+    explorer.currentPath,
+    explorer.mode,
+    explorer.placeholderView,
+    explorer.previewNode,
+  ]);
 
   const headerTitle = useMemo(() => {
     if (explorer.mode === 'home') {
       return 'Dosya Yöneticisi';
     }
-    return currentSegments.at(-1) ?? 'Dosya Yöneticisi';
-  }, [currentSegments, explorer.mode]);
+    return currentBreadcrumbs.at(-1)?.label ?? 'Dosya Yöneticisi';
+  }, [currentBreadcrumbs, explorer.mode]);
 
-  const searchPlaceholder = explorer.mode === 'home' ? 'Dosya ara' : 'Bu klasörde ara';
+  const handlePressBreadcrumbSegment = useCallback(
+    (index: number) => {
+      const target = currentBreadcrumbs[index];
+      if (!target) {
+        return;
+      }
+
+      explorer.openBrowserPath(target.path, {
+        categoryId: explorer.activeDirectoryCategoryId,
+        emptyState: explorer.activeEmptyState,
+      });
+    },
+    [currentBreadcrumbs, explorer],
+  );
+
+  const searchPlaceholder =
+    explorer.mode === 'home' ? 'Dosya ara' : 'Bu klasör ve alt klasörlerde ara';
+
+  const handleVisibleNodePress = useCallback(
+    (node: FileSystemNode) => {
+      setInteractionError(null);
+      if (explorer.selectedNodeIds.length > 0) {
+        explorer.toggleSelection(node);
+        return;
+      }
+
+      if (searchQuery.trim() && explorer.mode === 'browser') {
+        const targetPath =
+          node.kind === 'directory' ? node.path : getParentPath(node.path);
+
+        if (targetPath !== explorer.currentPath) {
+          explorer.openBrowserPath(targetPath, {
+            categoryId: explorer.activeDirectoryCategoryId,
+            emptyState: explorer.activeEmptyState,
+          });
+          return;
+        }
+      }
+
+      void explorer.openNode(node);
+    },
+    [explorer, searchQuery],
+  );
 
   const renderListItem = useCallback(
     ({item}: {item: FileSystemNode}) => {
@@ -701,14 +1217,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
           density={viewMode === 'compact' ? 'compact' : 'details'}
           node={item}
           onLongPress={explorer.toggleSelection}
-          onPress={node => {
-            setInteractionError(null);
-            if (explorer.selectedNodeIds.length > 0) {
-              explorer.toggleSelection(node);
-              return;
-            }
-            void explorer.openNode(node);
-          }}
+          onPress={handleVisibleNodePress}
           rightMetaOverride={formatAbsoluteDate(item.modifiedAt)}
           selected={selectedIdSet.has(item.id)}
           {...(trashEntry && daysLeft != null
@@ -717,24 +1226,18 @@ export const ExplorerScreen = (): React.JSX.Element => {
         />
       );
     },
-    [explorer, isTrashView, selectedIdSet, trashEntries, viewMode],
+    [explorer, handleVisibleNodePress, isTrashView, selectedIdSet, trashEntries, viewMode],
   );
 
   const renderGridItem = useCallback(
     ({item}: {item: FileSystemNode}) => {
       const isDirectory = item.kind === 'directory';
+      const shouldShowPreview = viewMode === 'large-icons' && isImageNode(item);
 
       return (
         <Pressable
           onLongPress={() => explorer.toggleSelection(item)}
-          onPress={() => {
-            setInteractionError(null);
-            if (explorer.selectedNodeIds.length > 0) {
-              explorer.toggleSelection(item);
-              return;
-            }
-            void explorer.openNode(item);
-          }}
+          onPress={() => handleVisibleNodePress(item)}
           style={({pressed}) => ({
             flex: 1,
             minHeight: viewMode === 'large-icons' ? 118 : 96,
@@ -750,7 +1253,15 @@ export const ExplorerScreen = (): React.JSX.Element => {
               backgroundColor: isDirectory ? theme.colors.surfaceMuted : theme.colors.primaryMuted,
               padding: viewMode === 'large-icons' ? theme.spacing.md : theme.spacing.sm,
             }}>
-            {isDirectory ? (
+            {shouldShowPreview ? (
+              <Image
+                source={{uri: `file://${item.path}`}}
+                style={{
+                  width: viewMode === 'large-icons' ? 34 : 24,
+                  height: viewMode === 'large-icons' ? 34 : 24,
+                }}
+              />
+            ) : isDirectory ? (
               <Folder color={theme.colors.text} size={viewMode === 'large-icons' ? 26 : 20} />
             ) : (
               <ImageIcon color={theme.colors.primary} size={viewMode === 'large-icons' ? 26 : 20} />
@@ -759,17 +1270,72 @@ export const ExplorerScreen = (): React.JSX.Element => {
           <AppText
             numberOfLines={2}
             style={{fontSize: theme.typography.caption, marginTop: theme.spacing.sm, textAlign: 'center'}}
-            weight="semibold">
+            weight="regular">
             {item.name}
           </AppText>
         </Pressable>
       );
     },
-    [explorer, selectedIdSet, theme, viewMode],
+    [explorer, handleVisibleNodePress, selectedIdSet, theme, viewMode],
+  );
+
+  const renderInstalledAppItem = useCallback(
+    ({item}: {item: InstalledAppItem}) => (
+      <Pressable
+        delayLongPress={220}
+        onLongPress={() => setSelectedAppPackage(item.packageName)}
+        style={({pressed}) => ({
+          width: '25%',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          paddingHorizontal: theme.spacing.xs,
+          paddingVertical: theme.spacing.md,
+          opacity: pressed ? 0.82 : 1,
+          backgroundColor:
+            selectedAppPackage === item.packageName
+              ? theme.colors.primaryMuted
+              : 'transparent',
+        })}>
+        {item.iconBase64 ? (
+          <Image
+            source={{uri: `data:image/png;base64,${item.iconBase64}`}}
+            style={{width: 42, height: 42}}
+          />
+        ) : (
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: theme.colors.surfaceMuted,
+            }}>
+            <AppText style={{fontSize: theme.typography.caption}}>
+              {item.label.slice(0, 1)}
+            </AppText>
+          </View>
+        )}
+        <AppText
+          numberOfLines={2}
+          style={{
+            marginTop: theme.spacing.sm,
+            textAlign: 'center',
+            fontSize: theme.typography.caption,
+          }}>
+          {item.label}
+        </AppText>
+        <AppText
+          tone="muted"
+          style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption - 1}}>
+          {formatBytes(item.sizeBytes).toLowerCase()}
+        </AppText>
+      </Pressable>
+    ),
+    [selectedAppPackage, theme],
   );
 
   const emptyComponent = useMemo(() => {
-    if (explorer.isLoading) {
+    if (explorer.isLoading || isSearchLoading) {
       return (
         <View style={{paddingVertical: theme.spacing.xxl}}>
           <ActivityIndicator color={theme.colors.primary} />
@@ -791,7 +1357,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         <EmptyState
           description="Arama ölçütünü değiştirmeyi deneyebilirsiniz."
           icon="folder"
-          supportingText="Bu klasörde aradığınız adla eşleşen öğe bulunamadı."
+          supportingText="Bu konum ve alt klasörlerde aradığınız adla eşleşen öğe bulunamadı."
           title="Sonuç bulunamadı"
         />
       );
@@ -806,20 +1372,31 @@ export const ExplorerScreen = (): React.JSX.Element => {
         title={emptyState.title}
       />
     );
-  }, [explorer.activeEmptyState, explorer.errorMessage, explorer.isLoading, searchQuery, theme.colors.primary, theme.spacing.xxl]);
+  }, [
+    explorer.activeEmptyState,
+    explorer.errorMessage,
+    explorer.isLoading,
+    isSearchLoading,
+    searchQuery,
+    theme.colors.primary,
+    theme.spacing.xxl,
+  ]);
 
   const headerNode = (
     <ExplorerHeader
       isSearchOpen={isSearchOpen}
       onChangeSearchQuery={setSearchQuery}
       onOpenDrawer={openDrawer}
+      onPressSegment={handlePressBreadcrumbSegment}
       onToggleMoreMenu={toggleMoreMenu}
       onToggleSearch={toggleSearch}
       onToggleSortMenu={toggleSortMenu}
       searchQuery={searchQuery}
       title={headerTitle}
       {...(searchPlaceholder ? {searchPlaceholder} : {})}
-      {...(explorer.mode !== 'home' ? {segments: currentSegments} : {})}
+      {...(explorer.mode !== 'home'
+        ? {segments: currentBreadcrumbs.map(item => item.label)}
+        : {})}
     />
   );
 
@@ -836,18 +1413,41 @@ export const ExplorerScreen = (): React.JSX.Element => {
         isTrashView={isTrashView}
         onAddFavorite={handleAddSelectionToFavorites}
         onCopy={handleCopySelection}
-        onCreateFile={() => {
-          void handleCreateTextFile();
-        }}
         onDelete={handleDeleteSelection}
         onMove={handleMoveSelection}
         onOpenWith={handleOpenSelected}
         onPrimaryAction={handlePrimarySelectionAction}
+        onRename={openRenameModal}
         onShare={() => {
           void handleShareSelection();
         }}
         selectedCount={explorer.selectedNodeIds.length}
       />
+    ) : isAppsView && selectedAppPackage ? (
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
+        }}>
+        <Pressable
+          onPress={() => {
+            void handleUninstallSelectedApp();
+          }}
+          style={({pressed}) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.spacing.sm,
+            opacity: pressed ? 0.72 : 1,
+          })}>
+          <Trash2 color={theme.colors.danger} size={16} />
+          <AppText style={{fontSize: theme.typography.caption}}>
+            Kaldır
+          </AppText>
+        </Pressable>
+      </View>
     ) : operations.clipboard ? (
       <ExplorerClipboardActionBar
         itemCount={operations.clipboard.items.length}
@@ -877,6 +1477,23 @@ export const ExplorerScreen = (): React.JSX.Element => {
     <ScreenContainer style={{paddingHorizontal: 0, paddingTop: 0}}>
       <View style={{flex: 1, backgroundColor: theme.colors.background}}>
         {headerNode}
+        {isSortMenuOpen || isMoreMenuOpen ? (
+          <Pressable
+            onPress={() => {
+              setSortMenuOpen(false);
+              setMoreMenuOpen(false);
+              setCreateMenuOpen(false);
+            }}
+            style={{
+              position: 'absolute',
+              top: topMenuOffset,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              zIndex: 18,
+            }}
+          />
+        ) : null}
         {isSortMenuOpen ? (
           <View
             style={{
@@ -893,7 +1510,6 @@ export const ExplorerScreen = (): React.JSX.Element => {
             <AppText weight="bold">Görünüm çeşidi</AppText>
             <View style={{marginTop: theme.spacing.sm, gap: theme.spacing.xs}}>
               {viewModes.map(modeOption => {
-                const Icon = modeOption.icon;
                 const isActive = viewMode === modeOption.id;
                 return (
                   <Pressable
@@ -901,7 +1517,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     onPress={() => setViewMode(modeOption.id)}
                     style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
-                      <Icon color={theme.colors.primary} size={16} />
+                      <ViewModeGlyph color={theme.colors.primary} modeId={modeOption.id} />
                       <AppText weight={isActive ? 'bold' : 'semibold'}>{modeOption.label}</AppText>
                     </View>
                     {isActive ? <Check color={theme.colors.primary} size={16} /> : null}
@@ -914,7 +1530,6 @@ export const ExplorerScreen = (): React.JSX.Element => {
             <AppText weight="bold">Sırala</AppText>
             <View style={{marginTop: theme.spacing.sm, gap: theme.spacing.xs}}>
               {sortModes.map(modeOption => {
-                const SortIcon = modeOption.id.includes('asc') ? ArrowUpAZ : ArrowDownAZ;
                 const isActive = sortModeId === modeOption.id;
                 return (
                   <Pressable
@@ -922,7 +1537,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     onPress={() => setSortModeId(modeOption.id)}
                     style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
-                      <SortIcon color={theme.colors.primary} size={16} />
+                      <SortModeGlyph color={theme.colors.primary} mode={modeOption} />
                       <AppText weight={isActive ? 'bold' : 'semibold'}>{modeOption.label}</AppText>
                     </View>
                     {isActive ? <Check color={theme.colors.primary} size={16} /> : null}
@@ -957,10 +1572,10 @@ export const ExplorerScreen = (): React.JSX.Element => {
             </Pressable>
             {isCreateMenuOpen ? (
               <View style={{marginLeft: theme.spacing.md, marginBottom: theme.spacing.sm, gap: theme.spacing.xs}}>
-                <Pressable onPress={() => { void handleCreateTextFile(); }} style={{paddingVertical: theme.spacing.sm}}>
-                  <AppText>Dosya oluştur</AppText>
+                <Pressable onPress={openCreateTextModal} style={{paddingVertical: theme.spacing.sm}}>
+                  <AppText>Metin Belgesi Oluştur</AppText>
                 </Pressable>
-                <Pressable onPress={() => { void handleCreateDirectory(); }} style={{paddingVertical: theme.spacing.sm}}>
+                <Pressable onPress={openCreateFolderModal} style={{paddingVertical: theme.spacing.sm}}>
                   <AppText>Klasör oluştur</AppText>
                 </Pressable>
               </View>
@@ -973,10 +1588,18 @@ export const ExplorerScreen = (): React.JSX.Element => {
               <RefreshCcw color={theme.colors.primary} size={16} />
               <AppText weight="semibold">Yenile</AppText>
             </Pressable>
-            <Pressable onPress={handleToggleHiddenFiles} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm}}>
-              {showHiddenFiles ? <EyeOff color={theme.colors.primary} size={16} /> : <Eye color={theme.colors.primary} size={16} />}
-              <AppText weight="semibold">{showHiddenFiles ? 'Gizli dosyaları gizle' : 'Gizli dosyaları göster'}</AppText>
-            </Pressable>
+            <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
+              <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
+                {showHiddenFiles ? <EyeOff color={theme.colors.primary} size={16} /> : <Eye color={theme.colors.primary} size={16} />}
+                <AppText weight="semibold">Gizli Dosya</AppText>
+              </View>
+              <Switch
+                onValueChange={handleToggleHiddenFiles}
+                thumbColor="#FFFFFF"
+                trackColor={{false: theme.colors.border, true: theme.colors.primary}}
+                value={showHiddenFiles}
+              />
+            </View>
             <Pressable onPress={handleOpenSettings} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm}}>
               <Settings color={theme.colors.primary} size={16} />
               <AppText weight="semibold">Ayarlar</AppText>
@@ -988,6 +1611,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
         {explorer.mode === 'home' ? (
           <ScrollView
+            refreshControl={
+              <RefreshControl
+                onRefresh={handleRefreshCurrent}
+                refreshing={isRefreshing}
+                tintColor={theme.colors.primary}
+              />
+            }
             contentContainerStyle={{paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: contentBottomInset}}
             showsVerticalScrollIndicator={false}>
             <ExplorerDashboard
@@ -996,6 +1626,43 @@ export const ExplorerScreen = (): React.JSX.Element => {
               storageItems={homeStorageItems}
             />
           </ScrollView>
+        ) : isAppsView ? (
+          <FlatList
+            key="apps-grid"
+            refreshControl={
+              <RefreshControl
+                onRefresh={handleRefreshCurrent}
+                refreshing={isRefreshing || isAppsLoading}
+                tintColor={theme.colors.primary}
+              />
+            }
+            columnWrapperStyle={{marginBottom: theme.spacing.sm}}
+            contentContainerStyle={{
+              paddingHorizontal: theme.spacing.md,
+              paddingTop: theme.spacing.md,
+              paddingBottom: contentBottomInset,
+              flexGrow: 1,
+            }}
+            data={installedApps}
+            keyExtractor={item => item.packageName}
+            ListEmptyComponent={
+              isAppsLoading ? (
+                <View style={{paddingVertical: theme.spacing.xxl}}>
+                  <ActivityIndicator color={theme.colors.primary} />
+                </View>
+              ) : (
+                <EmptyState
+                  title="Uygulama bulunamadı"
+                  description="Yüklü uygulamalar listesi şu anda boş görünüyor."
+                  supportingText="Yenileyip tekrar deneyebilirsiniz."
+                  icon="apps"
+                />
+              )
+            }
+            numColumns={4}
+            renderItem={renderInstalledAppItem}
+            showsVerticalScrollIndicator={false}
+          />
         ) : explorer.mode === 'placeholder' && explorer.placeholderView ? (
           <ScrollView
             contentContainerStyle={{paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: contentBottomInset}}
@@ -1021,6 +1688,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
             ListEmptyComponent={emptyComponent}
             maxToRenderPerBatch={10}
             numColumns={isGridView ? gridColumns : 1}
+            refreshControl={
+              <RefreshControl
+                onRefresh={handleRefreshCurrent}
+                refreshing={isRefreshing || explorer.isLoading || isSearchLoading}
+                tintColor={theme.colors.primary}
+              />
+            }
             removeClippedSubviews={!isGridView}
             renderItem={isGridView ? renderGridItem : renderListItem}
             showsVerticalScrollIndicator={false}
@@ -1074,6 +1748,123 @@ export const ExplorerScreen = (): React.JSX.Element => {
           </View>
         ) : null}
 
+        {createModalState ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              zIndex: 45,
+              backgroundColor: 'rgba(0, 0, 0, 0.34)',
+              justifyContent: 'center',
+              paddingHorizontal: theme.spacing.lg,
+            }}>
+            <Pressable
+              onPress={() => {
+                setCreateModalState(null);
+                setRenameTargetNode(null);
+              }}
+              style={{position: 'absolute', top: 0, right: 0, bottom: 0, left: 0}}
+            />
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: theme.spacing.lg,
+                gap: theme.spacing.md,
+              }}>
+              <AppText weight="bold">{createModalState.title}</AppText>
+              <TextInput
+                autoFocus
+                onChangeText={value =>
+                  setCreateModalState(currentState =>
+                    currentState ? {...currentState, value} : currentState,
+                  )
+                }
+                placeholder="Ad girin"
+                placeholderTextColor={theme.colors.textMuted}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  color: theme.colors.text,
+                  fontSize: theme.typography.body,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: theme.spacing.sm,
+                }}
+                value={createModalState.value}
+              />
+              <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm}}>
+                <Pressable
+                  onPress={() => {
+                    setCreateModalState(null);
+                    setRenameTargetNode(null);
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: theme.spacing.sm,
+                  }}>
+                  <AppText>Vazgeç</AppText>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    void handleSubmitCreateModal();
+                  }}
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: theme.spacing.sm,
+                  }}>
+                  <AppText style={{color: '#FFFFFF'}}>{createModalState.confirmLabel}</AppText>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {recentContextNode ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              zIndex: 46,
+              backgroundColor: 'rgba(0, 0, 0, 0.26)',
+              justifyContent: 'flex-end',
+              padding: theme.spacing.lg,
+            }}>
+            <Pressable
+              onPress={() => setRecentContextNode(null)}
+              style={{position: 'absolute', top: 0, right: 0, bottom: 0, left: 0}}
+            />
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: theme.spacing.lg,
+                gap: theme.spacing.sm,
+              }}>
+              <AppText>{recentContextNode.name}</AppText>
+              <Pressable onPress={handleRemoveRecentNode} style={{paddingVertical: theme.spacing.sm}}>
+                <AppText>Listeden Kaldır</AppText>
+              </Pressable>
+              <Pressable onPress={handleOpenRecentNodeLocation} style={{paddingVertical: theme.spacing.sm}}>
+                <AppText>Dosya Konumuna Git</AppText>
+              </Pressable>
+              <Pressable onPress={handleAddRecentNodeToFavorites} style={{paddingVertical: theme.spacing.sm}}>
+                <AppText>Favorilere Ekle</AppText>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         {isDrawerOpen ? (
           <View pointerEvents="box-none" style={{position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 30}}>
             <Pressable onPress={closeDrawer} style={{position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.24)'}} />
@@ -1081,7 +1872,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
               <ExplorerSideDrawer
                 activeTab={drawerTab}
                 favorites={favoriteItems}
+                onClearRecent={handleClearRecent}
                 onClose={closeDrawer}
+                onLongPressRecent={handleLongPressRecentNode}
                 onOpenLocation={handleDrawerLocationPress}
                 onOpenNode={handleDrawerNodePress}
                 onRemoveFavorite={handleRemoveFavoriteFromDrawer}

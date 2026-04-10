@@ -1,9 +1,18 @@
 package com.filemanagerpro
 
+import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.storage.StorageManager
+import android.util.Base64
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Arguments
@@ -13,6 +22,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.io.File
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Locale
@@ -54,6 +64,26 @@ class LocalFileSystemModule(
       promise.resolve(results)
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_LIST_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun searchDirectory(path: String, query: String, includeHidden: Boolean, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val rootDirectory = resolveDirectory(path)
+      val normalizedQuery = query.trim().lowercase(Locale.ROOT)
+
+      if (normalizedQuery.isBlank()) {
+        promise.resolve(Arguments.createArray())
+        return
+      }
+
+      val results = Arguments.createArray()
+      collectSearchMatches(rootDirectory, normalizedQuery, includeHidden, results)
+      promise.resolve(results)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_SEARCH_FAILED", error.message, error)
     }
   }
 
@@ -116,6 +146,73 @@ class LocalFileSystemModule(
       )
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_OPEN_FILE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun getUsbRoots(promise: Promise) {
+    try {
+      val roots = Arguments.createArray()
+      resolveUsbRoots().forEach { root ->
+        roots.pushString(root)
+      }
+      promise.resolve(roots)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_USB_ROOTS_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun listInstalledApps(includeSystemApps: Boolean, promise: Promise) {
+    try {
+      val packageManager = reactApplicationContext.packageManager
+      val packages = packageManager.getInstalledApplications(0)
+      val results = Arguments.createArray()
+
+      packages
+        .filter { appInfo ->
+          includeSystemApps ||
+            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        }
+        .sortedBy { packageManager.getApplicationLabel(it).toString().lowercase(Locale.ROOT) }
+        .forEach { appInfo ->
+          val sourceFile = File(appInfo.sourceDir ?: "")
+          val label = packageManager.getApplicationLabel(appInfo).toString()
+          val map = Arguments.createMap()
+          map.putString("packageName", appInfo.packageName)
+          map.putString("label", label)
+          map.putDouble("sizeBytes", sourceFile.length().toDouble())
+          map.putString("sourceDir", appInfo.sourceDir)
+          map.putBoolean(
+            "isSystemApp",
+            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+          )
+          map.putString("iconBase64", drawableToBase64(packageManager.getApplicationIcon(appInfo)))
+          results.pushMap(map)
+        }
+
+      promise.resolve(results)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_LIST_APPS_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun uninstallPackage(packageName: String, promise: Promise) {
+    try {
+      val activity = reactApplicationContext.currentActivity
+        ?: throw IllegalStateException("Uygulama kaldırmak için aktif ekran bulunamadı.")
+
+      val intent =
+        Intent(Intent.ACTION_DELETE).apply {
+          data = Uri.parse("package:$packageName")
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+      activity.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_UNINSTALL_FAILED", error.message, error)
     }
   }
 
@@ -262,6 +359,32 @@ class LocalFileSystemModule(
     }
   }
 
+  private fun collectSearchMatches(
+    directory: File,
+    normalizedQuery: String,
+    includeHidden: Boolean,
+    results: com.facebook.react.bridge.WritableArray,
+  ) {
+    val children = directory.listFiles()?.sortedBy { it.name.lowercase(Locale.ROOT) } ?: return
+
+    children.forEach { child ->
+      if (!includeHidden && child.name.startsWith(".")) {
+        if (child.isDirectory) {
+          return@forEach
+        }
+        return@forEach
+      }
+
+      if (child.name.lowercase(Locale.ROOT).contains(normalizedQuery)) {
+        results.pushMap(toNodeMap(child))
+      }
+
+      if (child.isDirectory) {
+        collectSearchMatches(child, normalizedQuery, includeHidden, results)
+      }
+    }
+  }
+
   private fun resolveDirectory(path: String): File {
     val target = resolveEntryWithinRoot(path)
 
@@ -394,6 +517,53 @@ class LocalFileSystemModule(
     }
   }
 
+  private fun resolveUsbRoots(): List<String> {
+    val packageName = reactApplicationContext.packageName
+    val externalDirs = reactApplicationContext.getExternalFilesDirs(null)
+    val rootPath = getExternalStorageRoot().canonicalPath
+    val discovered = linkedSetOf<String>()
+
+    externalDirs
+      .filterNotNull()
+      .forEach { directory ->
+        val canonicalPath = directory.canonicalPath
+        if (canonicalPath.startsWith(rootPath)) {
+          return@forEach
+        }
+
+        val androidMarker = "/Android/"
+        val rootCandidate =
+          if (canonicalPath.contains(androidMarker)) {
+            canonicalPath.substringBefore(androidMarker)
+          } else {
+            canonicalPath.substringBefore("/$packageName", canonicalPath)
+          }
+
+        val candidateFile = File(rootCandidate)
+        if (candidateFile.exists() && candidateFile.canRead()) {
+          discovered.add(candidateFile.canonicalPath)
+        }
+      }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      val storageManager =
+        reactApplicationContext.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
+
+      storageManager?.storageVolumes?.forEach { volume ->
+        if (!volume.isRemovable) {
+          return@forEach
+        }
+
+        val directory = volume.directory ?: return@forEach
+        if (directory.exists() && directory.canRead()) {
+          discovered.add(directory.canonicalPath)
+        }
+      }
+    }
+
+    return discovered.toList()
+  }
+
   private fun resolveMimeType(file: File): String {
     if (file.isDirectory) {
       return "resource/folder"
@@ -405,7 +575,27 @@ class LocalFileSystemModule(
     }
 
     return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+      ?: if (extension == "apk") "application/vnd.android.package-archive" else null
       ?: "application/octet-stream"
+  }
+
+  private fun drawableToBase64(drawable: Drawable): String {
+    val bitmap =
+      if (drawable is BitmapDrawable && drawable.bitmap != null) {
+        drawable.bitmap
+      } else {
+        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+          val canvas = Canvas(bitmap)
+          drawable.setBounds(0, 0, canvas.width, canvas.height)
+          drawable.draw(canvas)
+        }
+      }
+
+    val outputStream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+    return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
   }
 
   private fun toNodeMap(file: File) =

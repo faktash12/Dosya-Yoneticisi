@@ -34,6 +34,8 @@ interface ExplorerSideDrawerProps {
   onOpenLocation: (locationId: DrawerLocationItem['id']) => void;
   onOpenNode: (node: FileSystemNode) => void;
   onRemoveFavorite: (node: FileSystemNode) => void;
+  onClearRecent: () => void;
+  onLongPressRecent: (node: FileSystemNode) => void;
 }
 
 const drawerLocations: DrawerLocationItem[] = [
@@ -73,11 +75,13 @@ const DrawerNodeRow = ({
   node,
   onPress,
   onRemove,
+  onLongPress,
   showPath = true,
 }: {
   node: FileSystemNode;
   onPress: (node: FileSystemNode) => void;
   onRemove?: (node: FileSystemNode) => void;
+  onLongPress?: (node: FileSystemNode) => void;
   showPath?: boolean;
 }): React.JSX.Element => {
   const theme = useAppTheme();
@@ -90,17 +94,18 @@ const DrawerNodeRow = ({
         gap: theme.spacing.sm,
       }}>
       <Pressable
+        delayLongPress={220}
+        onLongPress={onLongPress ? () => onLongPress(node) : undefined}
         onPress={() => onPress(node)}
         style={({pressed}) => ({
           flex: 1,
-          borderRadius: theme.radii.md,
           backgroundColor: pressed
             ? theme.colors.primaryMuted
             : theme.colors.surfaceMuted,
           paddingHorizontal: theme.spacing.md,
           paddingVertical: theme.spacing.md,
         })}>
-        <AppText weight="semibold">{node.name}</AppText>
+        <AppText>{node.name}</AppText>
         {showPath ? (
           <AppText
             tone="muted"
@@ -135,6 +140,8 @@ export const ExplorerSideDrawer = ({
   onOpenLocation,
   onOpenNode,
   onRemoveFavorite,
+  onClearRecent,
+  onLongPressRecent,
 }: ExplorerSideDrawerProps): React.JSX.Element => {
   const theme = useAppTheme();
   const drawerWidth = Math.min(344, Math.max(286, Dimensions.get('window').width * 0.72));
@@ -243,7 +250,7 @@ export const ExplorerSideDrawer = ({
                     }}>
                     <Icon color={theme.colors.primary} size={18} />
                     <View style={{flex: 1}}>
-                      <AppText weight="semibold">{item.title}</AppText>
+                      <AppText>{item.title}</AppText>
                       <AppText
                         tone="muted"
                         style={{
@@ -277,7 +284,7 @@ export const ExplorerSideDrawer = ({
                     backgroundColor: theme.colors.surfaceMuted,
                     padding: theme.spacing.md,
                   }}>
-                  <AppText weight="semibold">Henüz favori yok</AppText>
+                  <AppText>Henüz favori yok</AppText>
                   <AppText
                     tone="muted"
                     style={{
@@ -296,6 +303,7 @@ export const ExplorerSideDrawer = ({
                 <DrawerNodeRow
                   key={item.id}
                   node={item}
+                  onLongPress={onLongPressRecent}
                   onPress={onOpenNode}
                   showPath={false}
                 />
@@ -307,7 +315,9 @@ export const ExplorerSideDrawer = ({
                     backgroundColor: theme.colors.surfaceMuted,
                     padding: theme.spacing.md,
                   }}>
-                  <AppText weight="semibold">Henüz son açılan dosya yok</AppText>
+                  <AppText style={{fontSize: theme.typography.caption}}>
+                    Henüz son açılan dosya yok
+                  </AppText>
                   <AppText
                     tone="muted"
                     style={{
@@ -319,6 +329,25 @@ export const ExplorerSideDrawer = ({
                 </View>
               )
           : null}
+
+        {activeTab === 'recent' && recentItems.length > 0 ? (
+          <Pressable
+            onPress={onClearRecent}
+            style={({pressed}) => ({
+              marginTop: theme.spacing.sm,
+              backgroundColor: pressed
+                ? theme.colors.primaryMuted
+                : theme.colors.surfaceMuted,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: theme.spacing.md,
+            })}>
+            <AppText
+              style={{fontSize: theme.typography.caption}}
+              tone="muted">
+              Son listeyi temizle
+            </AppText>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );

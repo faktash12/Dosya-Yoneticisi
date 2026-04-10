@@ -40,7 +40,6 @@ const FileListItemComponent = ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: theme.radii.lg,
         backgroundColor: selected
           ? theme.colors.primaryMuted
           : theme.colors.surface,
@@ -67,9 +66,9 @@ const FileListItemComponent = ({
       <View style={{flex: 1, paddingRight: theme.spacing.md}}>
         <AppText
           style={{
-            fontSize: isCompact ? theme.typography.caption + 1 : theme.typography.body,
+            fontSize: isCompact ? theme.typography.caption : theme.typography.body - 1,
           }}
-          weight="semibold">
+          weight="regular">
           {node.name}
         </AppText>
         <View

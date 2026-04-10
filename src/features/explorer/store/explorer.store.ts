@@ -44,6 +44,8 @@ interface ExplorerState {
   setClipboard: (clipboard: ClipboardState | null) => void;
   requestReload: () => void;
   recordRecentNode: (node: FileSystemNode) => void;
+  removeRecentNode: (path: string) => void;
+  clearRecentNodes: () => void;
 }
 
 const createDirectoryState = (
@@ -150,4 +152,11 @@ export const useExplorerStore = create<ExplorerState>(set => ({
         ].slice(0, 10),
       };
     }),
+  removeRecentNode: path =>
+    set(state => ({
+      recentOpenedNodes: state.recentOpenedNodes.filter(
+        currentNode => currentNode.path !== path,
+      ),
+    })),
+  clearRecentNodes: () => set({recentOpenedNodes: []}),
 }));

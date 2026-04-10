@@ -21,6 +21,7 @@ import {useAppTheme} from '@/hooks/useAppTheme';
 interface CategoryShortcutCardProps {
   item: ExplorerShortcutItem;
   onPress: (itemId: ExplorerShortcutItem['id']) => void;
+  width?: number;
 }
 
 const iconMap = {
@@ -77,6 +78,7 @@ const iconToneMap = {
 export const CategoryShortcutCard = ({
   item,
   onPress,
+  width,
 }: CategoryShortcutCardProps): React.JSX.Element => {
   const theme = useAppTheme();
   const Icon = iconMap[item.icon as keyof typeof iconMap] ?? HardDrive;
@@ -88,7 +90,7 @@ export const CategoryShortcutCard = ({
     };
 
   return (
-    <Pressable onPress={() => onPress(item.id)} style={{width: '31.8%'}}>
+    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '31%'}}>
       {({pressed}) => (
         <SectionCard
           style={{

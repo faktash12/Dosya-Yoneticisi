@@ -24,8 +24,7 @@ export const StorageAnalysisScreen = (): React.JSX.Element => {
             Depolama Analizi
           </AppText>
           <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-            Buyuk klasorler, medya agirlikli alanlar ve temizlenebilir bolgeler
-            icin altyapi hazirlandi.
+            Büyük klasörler, içerik dağılımı ve temizlenebilir alanlar burada özetlenir.
           </AppText>
         </SectionCard>
 
@@ -62,6 +61,24 @@ export const StorageAnalysisScreen = (): React.JSX.Element => {
                   }}
                 />
               </View>
+              <View style={{marginTop: theme.spacing.md, gap: theme.spacing.sm}}>
+                {segment.breakdown.map(item => (
+                  <View
+                    key={item.label}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                    <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+                      {item.label}
+                    </AppText>
+                    <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+                      {formatBytes(item.usedBytes)}
+                    </AppText>
+                  </View>
+                ))}
+              </View>
             </SectionCard>
           );
         })}
@@ -69,4 +86,3 @@ export const StorageAnalysisScreen = (): React.JSX.Element => {
     </ScreenContainer>
   );
 };
-

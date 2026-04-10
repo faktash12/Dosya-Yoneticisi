@@ -18,6 +18,7 @@ export type ExplorerCategoryId =
   | 'recent';
 
 export type ExplorerHomeEntryId = ExplorerCategoryId | 'sd-card';
+export type ExplorerExtendedHomeEntryId = ExplorerCategoryId | 'sd-card' | 'usb';
 
 export type ExplorerPlaceholderKind =
   | 'system-info'
@@ -89,13 +90,14 @@ export interface ExplorerDashboardItem {
 }
 
 export interface ExplorerStorageCardItem {
-  id: ExplorerHomeEntryId;
+  id: ExplorerExtendedHomeEntryId;
   title: string;
   subtitle: string;
   usedLabel: string;
   totalLabel: string;
   usageRatio: number;
   icon: Extract<ExplorerDashboardIcon, 'storage' | 'sd-card' | 'downloads'>;
+  isActive?: boolean;
 }
 
 export interface ExplorerShortcutItem {

@@ -3,10 +3,10 @@ import {Pressable, ScrollView, View} from 'react-native';
 import {
   Copy,
   EyeOff,
-  FilePlus2,
-  FolderOpen,
-  MoveRight,
+  ExternalLink,
+  Pencil,
   RotateCcw,
+  Scissors,
   Send,
   Star,
   Trash2,
@@ -22,7 +22,7 @@ interface ExplorerSelectionActionBarProps {
   onDelete: () => void;
   onShare: () => void;
   onOpenWith: () => void;
-  onCreateFile: () => void;
+  onRename: () => void;
   onCopy: () => void;
   onMove: () => void;
   onAddFavorite: () => void;
@@ -81,7 +81,7 @@ export const ExplorerSelectionActionBar = ({
   onDelete,
   onShare,
   onOpenWith,
-  onCreateFile,
+  onRename,
   onCopy,
   onMove,
   onAddFavorite,
@@ -116,12 +116,12 @@ export const ExplorerSelectionActionBar = ({
           onPress={onPrimaryAction}
         />
         <ActionButton icon={Send} label="Gönder" onPress={onShare} />
-        <ActionButton icon={FolderOpen} label="Birlikte aç" onPress={onOpenWith} />
-        <ActionButton icon={FilePlus2} label="Yeni dosya" onPress={onCreateFile} />
+        <ActionButton icon={ExternalLink} label="Birlikte Aç" onPress={onOpenWith} />
+        <ActionButton icon={Pencil} label="Adlandır" onPress={onRename} />
         <ActionButton icon={Star} label="Favori" onPress={onAddFavorite} />
         <ActionButton icon={Copy} label="Kopya" onPress={onCopy} />
         <ActionButton
-          icon={MoveRight}
+          icon={Scissors}
           label="Taşı"
           onPress={onMove}
           showSeparator={false}

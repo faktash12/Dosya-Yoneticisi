@@ -12,6 +12,7 @@ import type {
   ExplorerPlaceholderView,
 } from '@/features/explorer/types/explorer.types';
 import {getFileOpenMode} from '@/features/explorer/utils/fileOpenSupport';
+import {resolveExplorerCategoryAction} from '@/features/explorer/view-models/explorerCategoryActionResolver';
 import {mapUnknownError} from '@/services/error/ErrorMapper';
 import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
@@ -220,7 +221,20 @@ export const useExplorerController = () => {
       return;
     }
 
+    const categoryRootPath =
+      activeDirectoryCategoryId != null
+        ? (() => {
+            const action = resolveExplorerCategoryAction(activeDirectoryCategoryId);
+            return action.kind === 'directory' ? action.path : null;
+          })()
+        : null;
+
     if (currentPath === ROOT_DIRECTORY) {
+      openHome();
+      return;
+    }
+
+    if (categoryRootPath != null && currentPath === categoryRootPath) {
       openHome();
       return;
     }

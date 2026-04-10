@@ -15,15 +15,29 @@ interface NativeFileSystemNode {
   providerId: 'local';
   modifiedAt: string;
   sizeBytes?: number;
-  extension?: string | null;
-  mimeType?: string | null;
+  extension?: string;
+  mimeType?: string;
   childCount?: number;
   permissions: NativeFilePermissions;
+}
+
+export interface InstalledApplicationInfo {
+  packageName: string;
+  label: string;
+  sizeBytes: number;
+  sourceDir: string;
+  iconBase64?: string | null;
+  isSystemApp: boolean;
 }
 
 interface LocalFileSystemModuleShape {
   getRootDirectory: () => Promise<string>;
   listDirectory: (path: string) => Promise<NativeFileSystemNode[]>;
+  searchDirectory: (
+    path: string,
+    query: string,
+    includeHidden: boolean,
+  ) => Promise<NativeFileSystemNode[]>;
   readTextFile: (path: string) => Promise<string>;
   writeTextFile: (path: string, content: string) => Promise<boolean>;
   openFile: (path: string) => Promise<boolean>;
@@ -45,6 +59,11 @@ interface LocalFileSystemModuleShape {
     destinationDirectoryPath: string,
     conflictStrategy: 'overwrite' | 'skip' | 'rename',
   ) => Promise<string>;
+  getUsbRoots: () => Promise<string[]>;
+  listInstalledApps: (
+    includeSystemApps: boolean,
+  ) => Promise<InstalledApplicationInfo[]>;
+  uninstallPackage: (packageName: string) => Promise<boolean>;
 }
 
 const nativeModule = NativeModules.LocalFileSystemModule as
@@ -106,6 +125,30 @@ export const localFileSystemBridge = {
     }
 
     return nativeModule.readTextFile(path);
+  },
+
+  async searchDirectory(
+    path: string,
+    query: string,
+    includeHidden = false,
+  ): Promise<NativeFileSystemNode[]> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    try {
+      const result = await nativeModule.searchDirectory(path, query, includeHidden);
+      return result.map(normalizeNode);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Arama tamamlanamadı.';
+
+      if (message.includes('Depolama erişim izni gerekli')) {
+        throw new LocalFileSystemPermissionError(message);
+      }
+
+      throw error;
+    }
   },
 
   async writeTextFile(path: string, content: string): Promise<boolean> {
@@ -190,5 +233,31 @@ export const localFileSystemBridge = {
       destinationDirectoryPath,
       conflictStrategy,
     );
+  },
+
+  async getUsbRoots(): Promise<string[]> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      return [];
+    }
+
+    return nativeModule.getUsbRoots();
+  },
+
+  async listInstalledApps(
+    includeSystemApps = false,
+  ): Promise<InstalledApplicationInfo[]> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.listInstalledApps(includeSystemApps);
+  },
+
+  async uninstallPackage(packageName: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.uninstallPackage(packageName);
   },
 };

@@ -4,12 +4,16 @@ import {FolderArchive, HardDrive} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
-import type {ExplorerStorageCardItem} from '@/features/explorer/types/explorer.types';
+import type {
+  ExplorerExtendedHomeEntryId,
+  ExplorerStorageCardItem,
+} from '@/features/explorer/types/explorer.types';
 import {useAppTheme} from '@/hooks/useAppTheme';
 
 interface StorageCardProps {
   item: ExplorerStorageCardItem;
-  onPress: (itemId: ExplorerStorageCardItem['id']) => void;
+  onPress: (itemId: ExplorerExtendedHomeEntryId) => void;
+  width?: number;
 }
 
 const iconMap = {
@@ -36,14 +40,20 @@ const iconToneMap = {
 export const StorageCard = ({
   item,
   onPress,
+  width,
 }: StorageCardProps): React.JSX.Element => {
   const theme = useAppTheme();
   const Icon = iconMap[item.icon];
-  const iconTone = iconToneMap[item.icon];
+  const iconTone = item.isActive === false
+    ? {
+        backgroundColor: theme.colors.surfaceMuted,
+        iconColor: theme.colors.textMuted,
+      }
+    : iconToneMap[item.icon];
   const progressWidth = `${Math.max(0, Math.min(item.usageRatio, 1)) * 100}%` as DimensionValue;
 
   return (
-    <Pressable onPress={() => onPress(item.id)} style={{width: '31.8%'}}>
+    <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '31%'}}>
       {({pressed}) => (
         <SectionCard
           style={{
@@ -67,7 +77,7 @@ export const StorageCard = ({
               <Icon color={iconTone.iconColor} size={18} />
             </View>
             <AppText style={{fontSize: theme.typography.caption}} tone="muted">
-              %{Math.round(item.usageRatio * 100)}
+              {item.totalLabel ? `%${Math.round(item.usageRatio * 100)}` : '—'}
             </AppText>
           </View>
 

@@ -20,12 +20,12 @@ export const storageCards: ExplorerStorageCardItem[] = [
     icon: 'sd-card',
   },
   {
-    id: 'downloads',
-    title: 'İndirilenler',
-    subtitle: 'En son indirilen dosyalar',
-    usedLabel: '3,2 GB',
-    totalLabel: '12 GB',
-    usageRatio: 0.27,
+    id: 'usb',
+    title: 'USB',
+    subtitle: 'Bağlı OTG depolama',
+    usedLabel: 'Hazır değil',
+    totalLabel: '',
+    usageRatio: 0,
     icon: 'downloads',
   },
 ];
