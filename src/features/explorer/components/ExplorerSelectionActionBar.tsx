@@ -1,10 +1,12 @@
 import React from 'react';
 import {Pressable, ScrollView, View} from 'react-native';
 import {
+  Archive,
   Copy,
   EyeOff,
   ExternalLink,
   Pencil,
+  FolderOpen,
   RotateCcw,
   Scissors,
   Send,
@@ -26,6 +28,11 @@ interface ExplorerSelectionActionBarProps {
   onCopy: () => void;
   onMove: () => void;
   onAddFavorite: () => void;
+  onSelectAll?: () => void;
+  onGoToFolder?: () => void;
+  onExtractArchive?: () => void;
+  canGoToFolder?: boolean;
+  canExtractArchive?: boolean;
 }
 
 interface ActionButtonProps {
@@ -85,6 +92,11 @@ export const ExplorerSelectionActionBar = ({
   onCopy,
   onMove,
   onAddFavorite,
+  onSelectAll,
+  onGoToFolder,
+  onExtractArchive,
+  canGoToFolder = false,
+  canExtractArchive = false,
 }: ExplorerSelectionActionBarProps): React.JSX.Element => {
   const theme = useAppTheme();
 
@@ -109,23 +121,37 @@ export const ExplorerSelectionActionBar = ({
           paddingTop: theme.spacing.sm,
           paddingRight: theme.spacing.md,
         }}>
+        {isTrashView && onSelectAll ? (
+          <ActionButton icon={Copy} label="Tümünü Seç" onPress={onSelectAll} />
+        ) : null}
         <ActionButton icon={Trash2} label="Sil" onPress={onDelete} />
         <ActionButton
           icon={isTrashView ? RotateCcw : EyeOff}
           label={isTrashView ? 'Geri yükle' : 'Gizle'}
           onPress={onPrimaryAction}
+          showSeparator={!isTrashView}
         />
-        <ActionButton icon={Send} label="Gönder" onPress={onShare} />
-        <ActionButton icon={ExternalLink} label="Birlikte Aç" onPress={onOpenWith} />
-        <ActionButton icon={Pencil} label="Adlandır" onPress={onRename} />
-        <ActionButton icon={Star} label="Favori" onPress={onAddFavorite} />
-        <ActionButton icon={Copy} label="Kopya" onPress={onCopy} />
-        <ActionButton
-          icon={Scissors}
-          label="Taşı"
-          onPress={onMove}
-          showSeparator={false}
-        />
+        {!isTrashView ? (
+          <>
+            {canGoToFolder && onGoToFolder ? (
+              <ActionButton icon={FolderOpen} label="Klasöre Git" onPress={onGoToFolder} />
+            ) : null}
+            {canExtractArchive && onExtractArchive ? (
+              <ActionButton icon={Archive} label="Klasöre Çıkar" onPress={onExtractArchive} />
+            ) : null}
+            <ActionButton icon={Send} label="Gönder" onPress={onShare} />
+            <ActionButton icon={ExternalLink} label="Birlikte Aç" onPress={onOpenWith} />
+            <ActionButton icon={Pencil} label="Adlandır" onPress={onRename} />
+            <ActionButton icon={Star} label="Favori" onPress={onAddFavorite} />
+            <ActionButton icon={Copy} label="Kopya" onPress={onCopy} />
+            <ActionButton
+              icon={Scissors}
+              label="Taşı"
+              onPress={onMove}
+              showSeparator={false}
+            />
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );

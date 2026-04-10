@@ -1,5 +1,5 @@
-import React from 'react';
-import {Pressable, View} from 'react-native';
+import React, {useState} from 'react';
+import {Pressable, Switch, View} from 'react-native';
 import {
   ArrowLeft,
   Cloud,
@@ -17,6 +17,10 @@ import {EmptyState} from '@/components/feedback/EmptyState';
 import type {CloudProviderSummary} from '@/domain/entities/CloudProvider';
 import type {ExplorerPlaceholderView as ExplorerPlaceholderModel} from '@/features/explorer/types/explorer.types';
 import {useAppTheme} from '@/hooks/useAppTheme';
+import {
+  localFileSystemBridge,
+  type FtpServerStatus,
+} from '@/services/platform/LocalFileSystemBridge';
 
 interface ExplorerPlaceholderViewProps {
   placeholder: ExplorerPlaceholderModel;
@@ -39,7 +43,7 @@ const placeholderMeta = {
   },
   'network-access': {
     icon: Network,
-    sectionTitle: 'Ağ erişim katmanı',
+    sectionTitle: 'Erişim',
   },
   'recycle-bin': {
     icon: Trash2,
@@ -68,6 +72,39 @@ export const ExplorerPlaceholderView = ({
   const meta = placeholderMeta[placeholder.kind];
   const Icon = meta.icon;
   const isCloud = placeholder.kind === 'cloud-hub';
+  const isNetwork = placeholder.kind === 'network-access';
+  const [ftpShowHidden, setFtpShowHidden] = useState(false);
+  const [ftpStatus, setFtpStatus] = useState<FtpServerStatus | null>(null);
+  const [ftpError, setFtpError] = useState<string | null>(null);
+  const [isFtpBusy, setFtpBusy] = useState(false);
+
+  const handleStartFtp = async () => {
+    try {
+      setFtpBusy(true);
+      setFtpError(null);
+      setFtpStatus(await localFileSystemBridge.startFtpServer(ftpShowHidden));
+    } catch (error) {
+      setFtpError(
+        error instanceof Error ? error.message : 'PC erişimi başlatılamadı.',
+      );
+    } finally {
+      setFtpBusy(false);
+    }
+  };
+
+  const handleStopFtp = async () => {
+    try {
+      setFtpBusy(true);
+      setFtpError(null);
+      setFtpStatus(await localFileSystemBridge.stopFtpServer());
+    } catch (error) {
+      setFtpError(
+        error instanceof Error ? error.message : 'PC erişimi kapatılamadı.',
+      );
+    } finally {
+      setFtpBusy(false);
+    }
+  };
 
   return (
     <View style={{paddingBottom: theme.spacing.xxl}}>
@@ -82,19 +119,17 @@ export const ExplorerPlaceholderView = ({
           <View style={{flex: 1}}>
             <View
               style={{
-                alignSelf: 'flex-start',
-                borderRadius: theme.radii.lg,
-                backgroundColor: theme.colors.primaryMuted,
-                padding: theme.spacing.md,
-                marginBottom: theme.spacing.md,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
               }}>
               <Icon color={theme.colors.primary} size={22} />
+              <AppText
+                style={{fontSize: theme.typography.title, lineHeight: 32}}
+                weight="bold">
+                {placeholder.title}
+              </AppText>
             </View>
-            <AppText
-              style={{fontSize: theme.typography.title, lineHeight: 32}}
-              weight="bold">
-              {placeholder.title}
-            </AppText>
             <AppText tone="muted" style={{marginTop: theme.spacing.sm, lineHeight: 22}}>
               {placeholder.description}
             </AppText>
@@ -111,6 +146,7 @@ export const ExplorerPlaceholderView = ({
         </View>
       </SectionCard>
 
+      {!isNetwork ? (
       <SectionCard style={{marginBottom: theme.spacing.lg}}>
         <AppText weight="semibold">{meta.sectionTitle}</AppText>
         <View style={{marginTop: theme.spacing.md, gap: theme.spacing.sm}}>
@@ -133,6 +169,7 @@ export const ExplorerPlaceholderView = ({
           ))}
         </View>
       </SectionCard>
+      ) : null}
 
       {isCloud ? (
         providers.length > 0 ? (
@@ -173,6 +210,65 @@ export const ExplorerPlaceholderView = ({
             title="Henüz bağlı sağlayıcı yok"
           />
         )
+      ) : null}
+
+      {isNetwork ? (
+        <SectionCard>
+          <AppText weight="semibold">FTP erişimi</AppText>
+          <View
+            style={{
+              marginTop: theme.spacing.md,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+            <AppText>Gizli dosyaları göster</AppText>
+            <Switch
+              onValueChange={setFtpShowHidden}
+              thumbColor="#FFFFFF"
+              trackColor={{false: theme.colors.border, true: theme.colors.primary}}
+              value={ftpShowHidden}
+            />
+          </View>
+
+          {ftpStatus?.isRunning ? (
+            <View style={{marginTop: theme.spacing.md, gap: theme.spacing.sm}}>
+              <AppText>Adres: {ftpStatus.address}</AppText>
+              <AppText>Kullanıcı adı: {ftpStatus.username}</AppText>
+              <AppText>Şifre: {ftpStatus.password}</AppText>
+            </View>
+          ) : null}
+
+          {ftpError ? (
+            <AppText
+              style={{marginTop: theme.spacing.md, color: theme.colors.danger}}>
+              {ftpError}
+            </AppText>
+          ) : null}
+
+          <Pressable
+            disabled={isFtpBusy}
+            onPress={() => {
+              void (ftpStatus?.isRunning ? handleStopFtp() : handleStartFtp());
+            }}
+            style={{
+              marginTop: theme.spacing.lg,
+              backgroundColor: ftpStatus?.isRunning
+                ? theme.colors.danger
+                : theme.colors.primary,
+              paddingHorizontal: theme.spacing.lg,
+              paddingVertical: theme.spacing.md,
+              alignItems: 'center',
+            }}>
+            <AppText style={{color: '#FFFFFF'}} weight="semibold">
+              {isFtpBusy
+                ? 'İşleniyor'
+                : ftpStatus?.isRunning
+                  ? 'Bağlantıyı Kes'
+                  : 'Başlat'}
+            </AppText>
+          </Pressable>
+        </SectionCard>
       ) : null}
     </View>
   );

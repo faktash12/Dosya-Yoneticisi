@@ -1,13 +1,29 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
+  type GestureResponderEvent,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   TextInput,
   View,
 } from 'react-native';
-import {FileImage, FileText, Music, Pause, Play, Square, Video} from 'lucide-react-native';
+import {
+  FileImage,
+  FileText,
+  Maximize2,
+  Music,
+  Pause,
+  Play,
+  RotateCcw,
+  RotateCw,
+  Square,
+  Video,
+  X,
+} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
@@ -26,6 +42,7 @@ interface FilePreviewViewProps {
 
 export const FilePreviewView = ({
   node,
+  onBack,
 }: FilePreviewViewProps): React.JSX.Element => {
   const theme = useAppTheme();
   const previewMode = useMemo(() => getFileOpenMode(node), [node]);
@@ -35,10 +52,15 @@ export const FilePreviewView = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mediaStatus, setMediaStatus] = useState<MediaPlaybackStatus | null>(null);
+  const [isFullscreenOpen, setFullscreenOpen] = useState(false);
+  const [imageZoom, setImageZoom] = useState(1);
+  const [progressBarWidth, setProgressBarWidth] = useState(1);
+  const lastImageTapRef = React.useRef(0);
   const isEditableText =
     previewMode === 'text-preview' || previewMode === 'html-preview';
   const isMediaPreview =
     previewMode === 'audio-preview' || previewMode === 'video-preview';
+  const hasUnsavedChanges = isEditableText && draftContent !== content;
 
   useEffect(() => {
     if (previewMode === 'image-preview' || isMediaPreview) {
@@ -104,19 +126,62 @@ export const FilePreviewView = ({
     };
   }, [isMediaPreview]);
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     try {
       setIsSaving(true);
       await localFileSystemBridge.writeTextFile(node.path, draftContent);
       setContent(draftContent);
+      return true;
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : 'Dosya kaydedilemedi.',
       );
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleRequestBack = React.useCallback((): boolean => {
+    if (!hasUnsavedChanges) {
+      return false;
+    }
+
+    Alert.alert(
+      'Değişiklikleri kaydetmek istiyor musunuz?',
+      'Kaydetmeden çıkarsanız son düzenlemeler kaybolur.',
+      [
+        {
+          text: 'Vazgeç',
+          style: 'destructive',
+          onPress: onBack,
+        },
+        {
+          text: 'Kaydet',
+          onPress: () => {
+            void handleSave().then(saved => {
+              if (saved) {
+                onBack();
+              }
+            });
+          },
+        },
+      ],
+    );
+    return true;
+  }, [handleSave, hasUnsavedChanges, onBack]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (handleRequestBack()) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [handleRequestBack]);
 
   const formatDuration = (valueMs: number): string => {
     const totalSeconds = Math.max(0, Math.floor(valueMs / 1000));
@@ -158,6 +223,199 @@ export const FilePreviewView = ({
       );
     }
   };
+
+  const handleSeekBy = async (deltaMs: number) => {
+    try {
+      const nextPosition = Math.max(0, (mediaStatus?.positionMs ?? 0) + deltaMs);
+      setMediaStatus(await localFileSystemBridge.seekMediaPlayback(nextPosition));
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Sarma işlemi tamamlanamadı.',
+      );
+    }
+  };
+
+  const handleSeekToLocation = async (event: GestureResponderEvent) => {
+    if (!mediaStatus?.durationMs) {
+      return;
+    }
+
+    const ratio = Math.max(
+      0,
+      Math.min(1, event.nativeEvent.locationX / Math.max(progressBarWidth, 1)),
+    );
+
+    try {
+      setMediaStatus(
+        await localFileSystemBridge.seekMediaPlayback(
+          Math.round(mediaStatus.durationMs * ratio),
+        ),
+      );
+    } catch {
+      // Seek hatası kullanıcıyı akıştan koparmasın; periyodik durum yenilemesi devam eder.
+    }
+  };
+
+  const handleOpenFullscreen = async () => {
+    if (previewMode === 'video-preview') {
+      try {
+        await localFileSystemBridge.openVideoPlayer(node.path);
+        return;
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Tam ekran video açılamadı.',
+        );
+      }
+    }
+
+    setFullscreenOpen(true);
+  };
+
+  const handleImageTap = () => {
+    const now = Date.now();
+    if (now - lastImageTapRef.current < 280) {
+      setImageZoom(currentZoom => (currentZoom > 1 ? 1 : 2));
+    }
+    lastImageTapRef.current = now;
+  };
+
+  const renderImagePreview = (isFullscreen = false) => (
+    <Pressable onPress={handleImageTap} style={{alignItems: 'center', justifyContent: 'center'}}>
+      <Image
+        resizeMode="contain"
+        source={{uri: `file://${node.path}`}}
+        style={{
+          width: '100%',
+          minHeight: isFullscreen ? '100%' : 320,
+          transform: [{scale: imageZoom}],
+          backgroundColor: isFullscreen ? '#020617' : theme.colors.surfaceMuted,
+        }}
+      />
+    </Pressable>
+  );
+
+  const renderMediaControls = (isFullscreen = false) => (
+    <View style={{gap: theme.spacing.lg, paddingVertical: theme.spacing.md}}>
+      <View
+        style={{
+          minHeight: isFullscreen ? 280 : 180,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isFullscreen ? '#020617' : theme.colors.surfaceMuted,
+        }}>
+        {previewMode === 'audio-preview' ? (
+          <Music color={isFullscreen ? '#FFFFFF' : theme.colors.primary} size={44} />
+        ) : (
+          <Video color={isFullscreen ? '#FFFFFF' : theme.colors.primary} size={44} />
+        )}
+        <AppText
+          tone={isFullscreen ? 'default' : 'muted'}
+          style={{
+            marginTop: theme.spacing.md,
+            fontSize: theme.typography.caption,
+            color: isFullscreen ? '#E5E7EB' : undefined,
+          }}>
+          {formatBytes(node.sizeBytes).toLowerCase()}
+        </AppText>
+      </View>
+      <View>
+        <View
+          onLayout={event => setProgressBarWidth(event.nativeEvent.layout.width)}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={event => {
+            void handleSeekToLocation(event);
+          }}
+          onResponderMove={event => {
+            void handleSeekToLocation(event);
+          }}
+          onStartShouldSetResponder={() => true}
+          style={{
+            height: 22,
+            justifyContent: 'center',
+          }}>
+          <View
+            style={{
+            height: 6,
+            backgroundColor: isFullscreen ? '#1F2937' : theme.colors.surfaceMuted,
+            overflow: 'hidden',
+            }}>
+          <View
+            style={{
+              height: '100%',
+              width: `${
+                mediaStatus?.durationMs
+                  ? Math.min(
+                      100,
+                      (mediaStatus.positionMs / mediaStatus.durationMs) * 100,
+                    )
+                  : 0
+              }%`,
+              backgroundColor: theme.colors.primary,
+            }}
+          />
+          </View>
+        </View>
+        <View
+          style={{
+            marginTop: theme.spacing.sm,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+          }}>
+          <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+            {formatDuration(mediaStatus?.positionMs ?? 0)}
+          </AppText>
+          <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+            {formatDuration(mediaStatus?.durationMs ?? 0)}
+          </AppText>
+        </View>
+      </View>
+      <View style={{flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.md}}>
+        <Pressable
+          onPress={() => {
+            void handleSeekBy(-10_000);
+          }}
+          style={{padding: theme.spacing.sm}}>
+          <RotateCcw color={isFullscreen ? '#FFFFFF' : theme.colors.text} size={20} />
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            void (mediaStatus?.isPlaying ? handlePauseMedia() : handlePlayMedia());
+          }}
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 46,
+            height: 46,
+            borderRadius: 23,
+            borderWidth: 1,
+            borderColor: isFullscreen ? '#334155' : theme.colors.border,
+            backgroundColor: isFullscreen ? '#0F172A' : theme.colors.surface,
+          }}>
+          {mediaStatus?.isPlaying ? (
+            <Pause color={theme.colors.primary} size={20} />
+          ) : (
+            <Play color={theme.colors.primary} size={20} />
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            void handleSeekBy(10_000);
+          }}
+          style={{padding: theme.spacing.sm}}>
+          <RotateCw color={isFullscreen ? '#FFFFFF' : theme.colors.text} size={20} />
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            void handleStopMedia();
+          }}
+          style={{padding: theme.spacing.sm}}>
+          <Square color={isFullscreen ? '#FFFFFF' : theme.colors.text} size={18} />
+        </Pressable>
+      </View>
+    </View>
+  );
 
   return (
     <View style={{paddingBottom: theme.spacing.xxl}}>
@@ -222,6 +480,19 @@ export const FilePreviewView = ({
                 {isSaving ? 'Kaydediliyor' : 'Kaydet'}
               </AppText>
             </Pressable>
+          ) : previewMode === 'image-preview' || isMediaPreview ? (
+            <Pressable
+              onPress={() => {
+                void handleOpenFullscreen();
+              }}
+              style={{
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.sm,
+              }}>
+              <Maximize2 color={theme.colors.text} size={16} />
+            </Pressable>
           ) : null}
         </View>
       </SectionCard>
@@ -239,112 +510,9 @@ export const FilePreviewView = ({
             icon="documents"
           />
         ) : previewMode === 'image-preview' ? (
-          <Image
-            resizeMode="contain"
-            source={{uri: `file://${node.path}`}}
-            style={{
-              width: '100%',
-              minHeight: 320,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surfaceMuted,
-            }}
-          />
+          renderImagePreview()
         ) : isMediaPreview ? (
-          <View style={{gap: theme.spacing.lg, paddingVertical: theme.spacing.md}}>
-            <View
-              style={{
-                minHeight: 180,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: theme.colors.surfaceMuted,
-              }}>
-              {previewMode === 'audio-preview' ? (
-                <Music color={theme.colors.primary} size={44} />
-              ) : (
-                <Video color={theme.colors.primary} size={44} />
-              )}
-              <AppText
-                tone="muted"
-                style={{marginTop: theme.spacing.md, fontSize: theme.typography.caption}}>
-                {formatBytes(node.sizeBytes).toLowerCase()}
-              </AppText>
-            </View>
-            <View>
-              <View
-                style={{
-                  height: 5,
-                  backgroundColor: theme.colors.surfaceMuted,
-                  overflow: 'hidden',
-                }}>
-                <View
-                  style={{
-                    height: '100%',
-                    width: `${
-                      mediaStatus?.durationMs
-                        ? Math.min(
-                            100,
-                            (mediaStatus.positionMs / mediaStatus.durationMs) * 100,
-                          )
-                        : 0
-                    }%`,
-                    backgroundColor: theme.colors.primary,
-                  }}
-                />
-              </View>
-              <View
-                style={{
-                  marginTop: theme.spacing.sm,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                }}>
-                <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
-                  {formatDuration(mediaStatus?.positionMs ?? 0)}
-                </AppText>
-                <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
-                  {formatDuration(mediaStatus?.durationMs ?? 0)}
-                </AppText>
-              </View>
-            </View>
-            <View style={{flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.md}}>
-              <Pressable
-                onPress={() => {
-                  void (mediaStatus?.isPlaying ? handlePauseMedia() : handlePlayMedia());
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  backgroundColor: theme.colors.primary,
-                  paddingHorizontal: theme.spacing.lg,
-                  paddingVertical: theme.spacing.sm,
-                }}>
-                {mediaStatus?.isPlaying ? (
-                  <Pause color="#FFFFFF" size={16} />
-                ) : (
-                  <Play color="#FFFFFF" size={16} />
-                )}
-                <AppText style={{color: '#FFFFFF'}} weight="semibold">
-                  {mediaStatus?.isPlaying ? 'Duraklat' : 'Oynat'}
-                </AppText>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  void handleStopMedia();
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  paddingHorizontal: theme.spacing.lg,
-                  paddingVertical: theme.spacing.sm,
-                }}>
-                <Square color={theme.colors.text} size={14} />
-                <AppText>Durdur</AppText>
-              </Pressable>
-            </View>
-          </View>
+          renderMediaControls()
         ) : (
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
             {isEditableText ? (
@@ -373,6 +541,30 @@ export const FilePreviewView = ({
           </ScrollView>
         )}
       </SectionCard>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setFullscreenOpen(false)}
+        presentationStyle="fullScreen"
+        visible={isFullscreenOpen}>
+        <View style={{flex: 1, backgroundColor: '#020617', padding: theme.spacing.md}}>
+          <Pressable
+            onPress={() => setFullscreenOpen(false)}
+            style={{
+              alignSelf: 'flex-end',
+              padding: theme.spacing.md,
+              zIndex: 2,
+            }}>
+            <X color="#FFFFFF" size={22} />
+          </Pressable>
+          <View style={{flex: 1, justifyContent: 'center'}}>
+            {previewMode === 'image-preview'
+              ? renderImagePreview(true)
+              : isMediaPreview
+                ? renderMediaControls(true)
+                : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

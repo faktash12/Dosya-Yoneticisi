@@ -189,7 +189,7 @@ export const resolveExplorerCategoryAction = (
     },
     system: directoryAction(
       'system',
-      `${ROOT_DIRECTORY}/Android`,
+      '/',
       createEmptyState(
         'Sistem klasörü açılamadı',
         'Android sistem klasörleri cihaz izinlerine göre sınırlı olabilir.',
@@ -229,12 +229,9 @@ export const resolveExplorerCategoryAction = (
       placeholder: createPlaceholder(
         'network',
         'network-access',
-        'PC’den erişim',
+        'Erişim',
         'Telefon depolamasına yerel ağ üzerinden erişim ayarları.',
-        [
-          'Gizli dosyaları göster seçeneğini belirleyebilirsiniz.',
-          'Başlat düğmesi bağlantı bilgilerini üretir.',
-        ],
+        [],
         'Başlat',
       ),
     },

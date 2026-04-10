@@ -962,7 +962,7 @@ export class MockFileSystemDataSource {
   }
 
   async getFavorites(): Promise<FileSystemNode[]> {
-    return flatten.filter(node => node.isFavorite);
+    return [];
   }
 
   async getRecent(): Promise<FileSystemNode[]> {

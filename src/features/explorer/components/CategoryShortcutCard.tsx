@@ -14,7 +14,6 @@ import {
 } from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
-import {SectionCard} from '@/components/common/SectionCard';
 import type {ExplorerShortcutItem} from '@/features/explorer/types/explorer.types';
 import {useAppTheme} from '@/hooks/useAppTheme';
 
@@ -92,36 +91,38 @@ export const CategoryShortcutCard = ({
   return (
     <Pressable onPress={() => onPress(item.id)} style={width ? {width} : {width: '100%'}}>
       {({pressed}) => (
-        <SectionCard
+        <View
           style={{
-            minHeight: 102,
+            minHeight: 104,
             alignItems: 'center',
             justifyContent: 'center',
-            paddingHorizontal: theme.spacing.sm,
-            paddingVertical: theme.spacing.md,
+            paddingHorizontal: theme.spacing.xs,
+            paddingVertical: theme.spacing.sm,
             opacity: pressed ? 0.9 : 1,
           }}>
-          <View
-            style={{
-              borderRadius: theme.radii.lg,
-              backgroundColor: iconTone.backgroundColor,
-              padding: theme.spacing.md,
-            }}>
-            <Icon color={iconTone.iconColor} size={20} />
-          </View>
+          <Icon color={iconTone.iconColor} size={45} />
 
-          <View style={{marginTop: theme.spacing.md}}>
+          <View style={{marginTop: theme.spacing.sm, alignItems: 'center'}}>
             <AppText
               style={{
-                fontSize: theme.typography.caption + 1,
-                lineHeight: 18,
+                fontSize: theme.typography.caption - 1,
+                lineHeight: 16,
                 textAlign: 'center',
               }}
-              weight="semibold">
+              weight="regular">
               {item.title}
             </AppText>
+            <View
+              style={{
+                marginTop: theme.spacing.xs,
+                width: 22,
+                height: 1,
+                backgroundColor: iconTone.iconColor,
+                opacity: 0.36,
+              }}
+            />
           </View>
-        </SectionCard>
+        </View>
       )}
     </Pressable>
   );

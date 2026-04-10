@@ -23,7 +23,7 @@ export class HybridFileExplorerRepository implements FileExplorerRepository {
   }
 
   async getFavorites(): Promise<FileSystemNode[]> {
-    return this.mockDataSource.getFavorites();
+    return [];
   }
 
   async getRecent(): Promise<FileSystemNode[]> {

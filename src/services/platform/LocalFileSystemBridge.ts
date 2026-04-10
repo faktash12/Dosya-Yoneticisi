@@ -43,6 +43,13 @@ export interface MediaPlaybackStatus {
   path?: string | null;
 }
 
+export interface FtpServerStatus {
+  address: string;
+  username: string;
+  password: string;
+  isRunning: boolean;
+}
+
 interface LocalFileSystemModuleShape {
   getRootDirectory: () => Promise<string>;
   listDirectory: (path: string) => Promise<NativeFileSystemNode[]>;
@@ -54,6 +61,9 @@ interface LocalFileSystemModuleShape {
   readTextFile: (path: string) => Promise<string>;
   writeTextFile: (path: string, content: string) => Promise<boolean>;
   openFile: (path: string) => Promise<boolean>;
+  installPackage: (path: string) => Promise<boolean>;
+  shareFiles: (paths: string[]) => Promise<boolean>;
+  openVideoPlayer: (path: string) => Promise<boolean>;
   createDirectory: (directoryPath: string) => Promise<string>;
   renameEntry: (sourcePath: string, nextName: string) => Promise<string>;
   createTextFile: (
@@ -72,17 +82,30 @@ interface LocalFileSystemModuleShape {
     destinationDirectoryPath: string,
     conflictStrategy: 'overwrite' | 'skip' | 'rename',
   ) => Promise<string>;
+  extractArchive: (
+    archivePath: string,
+    destinationDirectoryPath: string,
+  ) => Promise<string>;
   getUsbRoots: () => Promise<string[]>;
   getRemovableStorageDevices?: () => Promise<RemovableStorageDeviceInfo[]>;
   listInstalledApps: (
     includeSystemApps: boolean,
   ) => Promise<InstalledApplicationInfo[]>;
   uninstallPackage: (packageName: string) => Promise<boolean>;
+  exitApplication: () => Promise<boolean>;
   startMediaFile: (path: string) => Promise<MediaPlaybackStatus>;
   pauseMediaPlayback: () => Promise<MediaPlaybackStatus>;
   resumeMediaPlayback: () => Promise<MediaPlaybackStatus>;
   stopMediaPlayback: () => Promise<MediaPlaybackStatus>;
+  seekMediaPlayback: (positionMs: number) => Promise<MediaPlaybackStatus>;
   getMediaPlaybackStatus: () => Promise<MediaPlaybackStatus>;
+  startFtpServer: (includeHidden: boolean) => Promise<FtpServerStatus>;
+  stopFtpServer: () => Promise<FtpServerStatus>;
+  searchFilesByExtensions?: (
+    path: string,
+    extensions: string[],
+    includeHidden: boolean,
+  ) => Promise<NativeFileSystemNode[]>;
 }
 
 const nativeModule = NativeModules.LocalFileSystemModule as
@@ -170,6 +193,34 @@ export const localFileSystemBridge = {
     }
   },
 
+  async searchFilesByExtensions(
+    path: string,
+    extensions: string[],
+    includeHidden = false,
+  ): Promise<NativeFileSystemNode[]> {
+    if (
+      Platform.OS !== 'android' ||
+      !nativeModule?.searchFilesByExtensions
+    ) {
+      const nodes = await this.searchDirectory(path, '.', includeHidden);
+      const normalizedExtensions = new Set(
+        extensions.map(extension => extension.toLowerCase()),
+      );
+      return nodes.filter(
+        node =>
+          node.kind === 'file' &&
+          normalizedExtensions.has(node.extension?.toLowerCase() ?? ''),
+      );
+    }
+
+    const result = await nativeModule.searchFilesByExtensions(
+      path,
+      extensions,
+      includeHidden,
+    );
+    return result.map(normalizeNode);
+  },
+
   async writeTextFile(path: string, content: string): Promise<boolean> {
     if (Platform.OS !== 'android' || !nativeModule) {
       throw new LocalFileSystemUnavailableError();
@@ -184,6 +235,30 @@ export const localFileSystemBridge = {
     }
 
     return nativeModule.openFile(path);
+  },
+
+  async installPackage(path: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.installPackage(path);
+  },
+
+  async shareFiles(paths: string[]): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.shareFiles(paths);
+  },
+
+  async openVideoPlayer(path: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.openVideoPlayer(path);
   },
 
   async createDirectory(directoryPath: string): Promise<string> {
@@ -254,6 +329,17 @@ export const localFileSystemBridge = {
     );
   },
 
+  async extractArchive(
+    archivePath: string,
+    destinationDirectoryPath: string,
+  ): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.extractArchive(archivePath, destinationDirectoryPath);
+  },
+
   async getUsbRoots(): Promise<string[]> {
     if (Platform.OS !== 'android' || !nativeModule) {
       return [];
@@ -288,6 +374,14 @@ export const localFileSystemBridge = {
     return nativeModule.uninstallPackage(packageName);
   },
 
+  async exitApplication(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      return false;
+    }
+
+    return nativeModule.exitApplication();
+  },
+
   async startMediaFile(path: string): Promise<MediaPlaybackStatus> {
     if (Platform.OS !== 'android' || !nativeModule) {
       throw new LocalFileSystemUnavailableError();
@@ -320,11 +414,35 @@ export const localFileSystemBridge = {
     return nativeModule.stopMediaPlayback();
   },
 
+  async seekMediaPlayback(positionMs: number): Promise<MediaPlaybackStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.seekMediaPlayback(positionMs);
+  },
+
   async getMediaPlaybackStatus(): Promise<MediaPlaybackStatus> {
     if (Platform.OS !== 'android' || !nativeModule) {
       throw new LocalFileSystemUnavailableError();
     }
 
     return nativeModule.getMediaPlaybackStatus();
+  },
+
+  async startFtpServer(includeHidden: boolean): Promise<FtpServerStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.startFtpServer(includeHidden);
+  },
+
+  async stopFtpServer(): Promise<FtpServerStatus> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.stopFtpServer();
   },
 };

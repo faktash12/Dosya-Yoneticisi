@@ -47,6 +47,10 @@ export const useExplorerController = () => {
   const recordRecentNode = useExplorerStore(state => state.recordRecentNode);
 
   const loadRequestIdRef = useRef(0);
+  const documentExtensions = useMemo(
+    () => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ods', 'txt', 'log', 'md', 'csv', 'rtf', 'odt', 'odf', 'ppt', 'pptx'],
+    [],
+  );
 
   const handleLoadError = useEffectEvent((error: unknown) => {
     setNodes([]);
@@ -94,9 +98,15 @@ export const useExplorerController = () => {
         });
 
         const result =
-          activeDirectoryCategoryId === 'recent'
-            ? (
-                await localFileSystemBridge.searchDirectory(
+          activeDirectoryCategoryId === 'documents'
+            ? await localFileSystemBridge.searchFilesByExtensions(
+                ROOT_DIRECTORY,
+                documentExtensions,
+                showHiddenFiles,
+              )
+            : activeDirectoryCategoryId === 'recent'
+              ? (
+                  await localFileSystemBridge.searchDirectory(
                   ROOT_DIRECTORY,
                   '.',
                   showHiddenFiles,
@@ -108,7 +118,7 @@ export const useExplorerController = () => {
                     new Date(rightNode.modifiedAt).getTime() -
                     new Date(leftNode.modifiedAt).getTime(),
                 )
-                .slice(0, 100)
+                .slice(0, 15)
             : await appContainer.browseDirectoryUseCase.execute({
                 path: currentPath,
                 providerId: 'local',
@@ -152,6 +162,7 @@ export const useExplorerController = () => {
   }, [
     currentPath,
     activeDirectoryCategoryId,
+    documentExtensions,
     handleLoadError,
     mode,
     reloadVersion,
@@ -179,6 +190,12 @@ export const useExplorerController = () => {
       recordRecentNode(node);
 
       try {
+        if (node.extension?.toLowerCase() === 'apk') {
+          await localFileSystemBridge.installPackage(node.path);
+          clearSelection();
+          return;
+        }
+
         if (
           fileOpenMode === 'text-preview' ||
           fileOpenMode === 'html-preview' ||

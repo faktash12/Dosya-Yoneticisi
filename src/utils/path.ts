@@ -1,6 +1,10 @@
 import {ROOT_DIRECTORY} from '@/constants/app';
 
 export const getParentPath = (path: string): string => {
+  if (path === '/') {
+    return ROOT_DIRECTORY;
+  }
+
   if (path === ROOT_DIRECTORY) {
     return ROOT_DIRECTORY;
   }
@@ -15,6 +19,10 @@ export const getParentPath = (path: string): string => {
 };
 
 export const getPathLabel = (path: string): string => {
+  if (path === '/') {
+    return 'Sistem';
+  }
+
   if (path === ROOT_DIRECTORY) {
     return 'Ana bellek';
   }
@@ -24,6 +32,10 @@ export const getPathLabel = (path: string): string => {
 };
 
 export const getPathSegments = (path: string): string[] => {
+  if (path === '/') {
+    return ['Sistem'];
+  }
+
   if (path === ROOT_DIRECTORY) {
     return ['Ana bellek'];
   }

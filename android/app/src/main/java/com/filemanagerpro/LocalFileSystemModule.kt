@@ -2,6 +2,7 @@ package com.filemanagerpro
 
 import android.content.Context
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
@@ -12,6 +13,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.os.storage.StorageManager
 import android.util.Base64
 import android.webkit.MimeTypeMap
@@ -21,12 +23,27 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableArray
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 import java.io.ByteArrayOutputStream
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.InetSocketAddress
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.Random
+import java.util.zip.ZipInputStream
 
 class LocalFileSystemModule(
   reactContext: ReactApplicationContext
@@ -34,6 +51,10 @@ class LocalFileSystemModule(
 
   private var mediaPlayer: MediaPlayer? = null
   private var mediaPath: String? = null
+  @Volatile private var ftpServerSocket: ServerSocket? = null
+  @Volatile private var ftpServerThread: Thread? = null
+  @Volatile private var ftpPassword: String? = null
+  @Volatile private var ftpIncludeHidden: Boolean = false
 
   override fun getName(): String = "LocalFileSystemModule"
 
@@ -53,12 +74,19 @@ class LocalFileSystemModule(
 
       val directory = resolveDirectory(path)
       val children =
-        directory
-          .listFiles()
-          ?.sortedWith(
-            compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })
-          )
-          ?: emptyList()
+        if (directory.canonicalPath == "/") {
+          systemRootPaths()
+            .map { File(it) }
+            .filter { it.exists() && it.isDirectory && it.canRead() }
+            .sortedBy { it.name.lowercase(Locale.ROOT) }
+        } else {
+          directory
+            .listFiles()
+            ?.sortedWith(
+              compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) })
+            )
+            ?: emptyList()
+        }
 
       val results = Arguments.createArray()
       children.forEach { child ->
@@ -88,6 +116,28 @@ class LocalFileSystemModule(
       promise.resolve(results)
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_SEARCH_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun searchFilesByExtensions(
+    path: String,
+    extensions: ReadableArray,
+    includeHidden: Boolean,
+    promise: Promise,
+  ) {
+    try {
+      requireStorageAccess()
+      val rootDirectory = resolveDirectory(path)
+      val normalizedExtensions =
+        (0 until extensions.size())
+          .mapNotNull { index -> extensions.getString(index)?.lowercase(Locale.ROOT) }
+          .toSet()
+      val results = Arguments.createArray()
+      collectExtensionMatches(rootDirectory, normalizedExtensions, includeHidden, results)
+      promise.resolve(results)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_EXTENSION_SEARCH_FAILED", error.message, error)
     }
   }
 
@@ -150,6 +200,127 @@ class LocalFileSystemModule(
       )
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_OPEN_FILE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun installPackage(path: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val file = resolveExistingEntry(path)
+      if (file.extension.lowercase(Locale.ROOT) != "apk") {
+        throw IllegalArgumentException("Seçilen dosya APK değil.")
+      }
+      val activity = reactApplicationContext.currentActivity
+        ?: throw IllegalStateException("APK kurmak için aktif ekran bulunamadı.")
+
+      if (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+          !reactApplicationContext.packageManager.canRequestPackageInstalls()
+      ) {
+        val permissionIntent =
+          Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:${reactApplicationContext.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+        activity.startActivity(permissionIntent)
+        promise.resolve(false)
+        return
+      }
+
+      val uri =
+        FileProvider.getUriForFile(
+          reactApplicationContext,
+          "${reactApplicationContext.packageName}.fileprovider",
+          file,
+        )
+      val intent =
+        Intent(Intent.ACTION_VIEW).apply {
+          setDataAndType(uri, "application/vnd.android.package-archive")
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+      activity.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_INSTALL_APK_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun shareFiles(paths: ReadableArray, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val activity = reactApplicationContext.currentActivity
+        ?: throw IllegalStateException("Paylaşım için aktif ekran bulunamadı.")
+      val files =
+        (0 until paths.size())
+          .mapNotNull { index -> paths.getString(index) }
+          .map { path -> resolveExistingEntry(path) }
+
+      if (files.isEmpty()) {
+        throw IllegalArgumentException("Paylaşılacak dosya seçilmedi.")
+      }
+      if (files.any { it.isDirectory }) {
+        throw IllegalArgumentException("Klasör paylaşımı desteklenmiyor. Lütfen dosya seçin.")
+      }
+
+      val uris =
+        files.map { file ->
+          FileProvider.getUriForFile(
+            reactApplicationContext,
+            "${reactApplicationContext.packageName}.fileprovider",
+            file,
+          )
+        }
+      val mimeType =
+        if (files.size == 1) resolveMimeType(files.first()) else "*/*"
+
+      val intent =
+        if (uris.size == 1) {
+          Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+            clipData = ClipData.newUri(reactApplicationContext.contentResolver, files.first().name, uris.first())
+          }
+        } else {
+          Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = mimeType
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            clipData = ClipData.newUri(reactApplicationContext.contentResolver, files.first().name, uris.first())
+          }
+        }.apply {
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+      val chooser = Intent.createChooser(intent, "Dosyaları gönder")
+      chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      activity.startActivity(chooser)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_SHARE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun openVideoPlayer(path: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val file = resolveFile(path)
+      val activity = reactApplicationContext.currentActivity
+        ?: throw IllegalStateException("Video açmak için aktif ekran bulunamadı.")
+
+      val intent =
+        Intent(activity, VideoPlayerActivity::class.java).apply {
+          putExtra(VideoPlayerActivity.EXTRA_VIDEO_PATH, file.absolutePath)
+        }
+
+      activity.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_VIDEO_PLAYER_FAILED", error.message, error)
     }
   }
 
@@ -238,6 +409,23 @@ class LocalFileSystemModule(
   }
 
   @ReactMethod
+  fun exitApplication(promise: Promise) {
+    try {
+      val activity = reactApplicationContext.currentActivity
+        ?: throw IllegalStateException("Uygulamayı kapatmak için aktif ekran bulunamadı.")
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        activity.finishAndRemoveTask()
+      } else {
+        activity.finish()
+      }
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_EXIT_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
   fun startMediaFile(path: String, promise: Promise) {
     try {
       requireStorageAccess()
@@ -289,11 +477,79 @@ class LocalFileSystemModule(
   }
 
   @ReactMethod
+  fun seekMediaPlayback(positionMs: Double, promise: Promise) {
+    try {
+      val nextPosition = positionMs.toInt().coerceAtLeast(0)
+      mediaPlayer?.seekTo(nextPosition)
+      promise.resolve(mediaStatusMap())
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_MEDIA_SEEK_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
   fun getMediaPlaybackStatus(promise: Promise) {
     try {
       promise.resolve(mediaStatusMap())
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_MEDIA_STATUS_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun startFtpServer(includeHidden: Boolean, promise: Promise) {
+    try {
+      requireStorageAccess()
+      stopFtpServerInternal()
+
+      val password = Random().nextInt(9000).plus(1000).toString()
+      val serverSocket = ServerSocket(1223)
+      ftpServerSocket = serverSocket
+      ftpPassword = password
+      ftpIncludeHidden = includeHidden
+      ftpServerThread =
+        Thread {
+          while (!serverSocket.isClosed) {
+            try {
+              val socket = serverSocket.accept()
+              Thread { handleFtpClient(socket, password, includeHidden) }.start()
+            } catch (_: Exception) {
+              break
+            }
+          }
+        }.apply {
+          isDaemon = true
+          start()
+        }
+
+      promise.resolve(
+        Arguments.createMap().apply {
+          putString("address", "ftp://${resolveLocalIpAddress()}:1223")
+          putString("username", "pc")
+          putString("password", password)
+          putBoolean("isRunning", true)
+        },
+      )
+    } catch (error: Exception) {
+      stopFtpServerInternal()
+      promise.reject("LOCAL_FS_FTP_START_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun stopFtpServer(promise: Promise) {
+    try {
+      stopFtpServerInternal()
+      promise.resolve(
+        Arguments.createMap().apply {
+          putString("address", "")
+          putString("username", "pc")
+          putString("password", "")
+          putBoolean("isRunning", false)
+        },
+      )
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_FTP_STOP_FAILED", error.message, error)
     }
   }
 
@@ -432,6 +688,61 @@ class LocalFileSystemModule(
     }
   }
 
+  @ReactMethod
+  fun extractArchive(
+    archivePath: String,
+    destinationDirectoryPath: String,
+    promise: Promise,
+  ) {
+    try {
+      requireStorageAccess()
+      val archive = resolveExistingEntry(archivePath)
+      val destinationDirectory = resolveDirectory(destinationDirectoryPath)
+      val extension = archive.extension.lowercase(Locale.ROOT)
+
+      if (extension != "zip") {
+        throw IllegalArgumentException("Şimdilik yalnızca ZIP arşivleri klasöre çıkarılabilir.")
+      }
+
+      val baseName = archive.nameWithoutExtension.ifBlank { "arsiv" }
+      val extractionRoot = generateRenamedDestination(destinationDirectory, baseName)
+      if (!extractionRoot.mkdirs()) {
+        throw IOException("Çıkarma klasörü oluşturulamadı: ${extractionRoot.absolutePath}")
+      }
+      val rootCanonicalPath = extractionRoot.canonicalPath
+
+      ZipInputStream(BufferedInputStream(FileInputStream(archive))).use { zipInput ->
+        while (true) {
+          val entry = zipInput.nextEntry ?: break
+          val target = File(extractionRoot, entry.name).canonicalFile
+          if (target.canonicalPath != rootCanonicalPath && !target.canonicalPath.startsWith("$rootCanonicalPath/")) {
+            throw IOException("Güvensiz arşiv yolu engellendi: ${entry.name}")
+          }
+
+          if (entry.isDirectory) {
+            if (!target.exists() && !target.mkdirs()) {
+              throw IOException("Klasör oluşturulamadı: ${target.absolutePath}")
+            }
+          } else {
+            target.parentFile?.let { parent ->
+              if (!parent.exists() && !parent.mkdirs()) {
+                throw IOException("Hedef klasör oluşturulamadı: ${parent.absolutePath}")
+              }
+            }
+            BufferedOutputStream(target.outputStream()).use { output ->
+              zipInput.copyTo(output)
+            }
+          }
+          zipInput.closeEntry()
+        }
+      }
+
+      promise.resolve(extractionRoot.absolutePath)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_EXTRACT_FAILED", error.message, error)
+    }
+  }
+
   private fun requireStorageAccess() {
     if (!StoragePermissionModule.hasStorageAccess(reactApplicationContext)) {
       throw IllegalStateException(
@@ -462,6 +773,30 @@ class LocalFileSystemModule(
 
       if (child.isDirectory) {
         collectSearchMatches(child, normalizedQuery, includeHidden, results)
+      }
+    }
+  }
+
+  private fun collectExtensionMatches(
+    directory: File,
+    extensions: Set<String>,
+    includeHidden: Boolean,
+    results: com.facebook.react.bridge.WritableArray,
+  ) {
+    val children = directory.listFiles()?.sortedBy { it.name.lowercase(Locale.ROOT) } ?: return
+
+    children.forEach { child ->
+      if (!includeHidden && child.name.startsWith(".")) {
+        return@forEach
+      }
+
+      if (child.isDirectory) {
+        collectExtensionMatches(child, extensions, includeHidden, results)
+        return@forEach
+      }
+
+      if (extensions.contains(child.extension.lowercase(Locale.ROOT))) {
+        results.pushMap(toNodeMap(child))
       }
     }
   }
@@ -599,16 +934,271 @@ class LocalFileSystemModule(
     mediaPath = null
   }
 
+  private fun stopFtpServerInternal() {
+    try {
+      ftpServerSocket?.close()
+    } catch (_: Exception) {
+    }
+    ftpServerSocket = null
+    ftpServerThread = null
+    ftpPassword = null
+  }
+
+  private fun handleFtpClient(socket: Socket, password: String, includeHidden: Boolean) {
+    socket.use { clientSocket ->
+      val reader =
+        BufferedReader(InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8))
+      val writer = PrintWriter(clientSocket.getOutputStream(), true)
+      var isAuthenticated = false
+      var currentDirectory = getExternalStorageRoot().canonicalFile
+      var passiveSocket: ServerSocket? = null
+      var activeDataAddress: InetSocketAddress? = null
+
+      fun writeLine(value: String) {
+        writer.print("$value\r\n")
+        writer.flush()
+      }
+
+      fun openPassiveSocket(announce: Boolean = true): ServerSocket {
+        passiveSocket?.close()
+        passiveSocket = ServerSocket(0)
+        activeDataAddress = null
+        val addressParts = resolveLocalIpAddress().split(".")
+        val port = passiveSocket!!.localPort
+        if (announce) {
+          writeLine(
+            "227 Entering Passive Mode (${addressParts.joinToString(",")},${port / 256},${port % 256}).",
+          )
+        }
+        return passiveSocket!!
+      }
+
+      fun openDataSocket(): Socket {
+        val activeAddress = activeDataAddress
+        if (activeAddress != null) {
+          val dataSocket = Socket()
+          dataSocket.connect(activeAddress, 5000)
+          activeDataAddress = null
+          return dataSocket
+        }
+
+        return (passiveSocket ?: openPassiveSocket()).accept()
+      }
+
+      fun resolveFtpPath(argument: String?): File {
+        val root = getExternalStorageRoot().canonicalFile
+        val raw = argument?.trim().orEmpty()
+        val target =
+          if (raw.isBlank() || raw == ".") {
+            currentDirectory
+          } else if (raw.startsWith("/")) {
+            File(root, raw.removePrefix("/"))
+          } else {
+            File(currentDirectory, raw)
+          }.canonicalFile
+
+        if (target.path != root.path && !target.path.startsWith("${root.path}/")) {
+          throw IllegalArgumentException("FTP kökü dışına çıkılamaz.")
+        }
+
+        return target
+      }
+
+      fun relativePath(file: File): String {
+        val root = getExternalStorageRoot().canonicalFile
+        val relative = file.canonicalPath.removePrefix(root.canonicalPath).trim('/')
+        return if (relative.isBlank()) "/" else "/$relative"
+      }
+
+      writeLine("220 Dosya Yoneticisi FTP hazir")
+
+      while (true) {
+        val line = reader.readLine() ?: break
+        val command = line.substringBefore(" ").uppercase(Locale.ROOT)
+        val argument = line.substringAfter(" ", "").ifBlank { null }
+
+        try {
+          when (command) {
+            "USER" -> {
+              if (argument == "pc") writeLine("331 Sifre gerekli") else writeLine("530 Kullanici hatali")
+            }
+            "PASS" -> {
+              isAuthenticated = argument == password
+              writeLine(if (isAuthenticated) "230 Giris basarili" else "530 Sifre hatali")
+            }
+            "SYST" -> writeLine("215 UNIX Type: L8")
+            "FEAT" -> {
+              writeLine("211-Features")
+              writeLine(" UTF8")
+              writeLine(" PASV")
+              writeLine(" EPSV")
+              writeLine(" SIZE")
+              writeLine(" MDTM")
+              writeLine("211 End")
+            }
+            "OPTS" -> writeLine("200 UTF8 aktif")
+            "NOOP" -> writeLine("200 Tamam")
+            "TYPE" -> writeLine("200 Tur ayarlandi")
+            "PWD" -> writeLine("257 \"${relativePath(currentDirectory)}\"")
+            "CWD" -> {
+              val nextDirectory = resolveFtpPath(argument)
+              if (nextDirectory.isDirectory && nextDirectory.canRead()) {
+                currentDirectory = nextDirectory
+                writeLine("250 Klasor degisti")
+              } else {
+                writeLine("550 Klasor acilamadi")
+              }
+            }
+            "CDUP" -> {
+              val root = getExternalStorageRoot().canonicalFile
+              val parent = currentDirectory.parentFile?.canonicalFile ?: root
+              currentDirectory =
+                if (parent.path.startsWith(root.path)) parent else root
+              writeLine("250 Ust klasor")
+            }
+            "PASV" -> openPassiveSocket()
+            "EPSV" -> {
+              val dataServer = openPassiveSocket(false)
+              writeLine("229 Entering Extended Passive Mode (|||${dataServer.localPort}|)")
+            }
+            "PORT" -> {
+              val parts = argument?.split(",") ?: emptyList()
+              if (parts.size == 6) {
+                val host = parts.take(4).joinToString(".")
+                val port = parts[4].toInt() * 256 + parts[5].toInt()
+                passiveSocket?.close()
+                passiveSocket = null
+                activeDataAddress = InetSocketAddress(host, port)
+                writeLine("200 Aktif veri baglantisi ayarlandi")
+              } else {
+                writeLine("501 PORT komutu hatali")
+              }
+            }
+            "SIZE" -> {
+              val file = resolveFtpPath(argument)
+              if (file.isFile && file.canRead()) writeLine("213 ${file.length()}") else writeLine("550 Boyut okunamadi")
+            }
+            "MDTM" -> {
+              val file = resolveFtpPath(argument)
+              if (file.exists()) {
+                val stamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(file.lastModified())
+                writeLine("213 $stamp")
+              } else {
+                writeLine("550 Tarih okunamadi")
+              }
+            }
+            "LIST", "NLST" -> {
+              if (!isAuthenticated) {
+                writeLine("530 Once giris yapin")
+              } else {
+                writeLine("150 Liste hazirlaniyor")
+                openDataSocket().use { dataSocket ->
+                  val dataWriter = PrintWriter(dataSocket.getOutputStream(), true)
+                  currentDirectory
+                    .listFiles()
+                    ?.filter { includeHidden || !it.name.startsWith(".") }
+                    ?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase(Locale.ROOT) }))
+                    ?.forEach { file ->
+                      if (command == "NLST") {
+                        dataWriter.print("${file.name}\r\n")
+                      } else {
+                        dataWriter.print("${formatFtpListLine(file)}\r\n")
+                      }
+                    }
+                  dataWriter.flush()
+                }
+                passiveSocket?.close()
+                passiveSocket = null
+                writeLine("226 Liste tamamlandi")
+              }
+            }
+            "RETR" -> {
+              if (!isAuthenticated) {
+                writeLine("530 Once giris yapin")
+              } else {
+                val file = resolveFtpPath(argument)
+                if (!file.isFile || !file.canRead()) {
+                  writeLine("550 Dosya okunamadi")
+                } else {
+                  writeLine("150 Dosya aktariliyor")
+                  openDataSocket().use { dataSocket ->
+                    BufferedInputStream(FileInputStream(file)).use { input ->
+                      BufferedOutputStream(dataSocket.getOutputStream()).use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                      }
+                    }
+                  }
+                  passiveSocket?.close()
+                  passiveSocket = null
+                  writeLine("226 Aktarim tamamlandi")
+                }
+              }
+            }
+            "QUIT" -> {
+              writeLine("221 Gorusmek uzere")
+              break
+            }
+            else -> writeLine("502 Komut desteklenmiyor")
+          }
+        } catch (_: Exception) {
+          writeLine("550 Islem tamamlanamadi")
+        }
+      }
+
+      passiveSocket?.close()
+    }
+  }
+
+  private fun formatFtpListLine(file: File): String {
+    val permissions = if (file.isDirectory) "drwxr-xr-x" else "-rw-r--r--"
+    val size = if (file.isDirectory) 0 else file.length()
+    val date = SimpleDateFormat("MMM dd HH:mm", Locale.US).format(file.lastModified())
+    return "$permissions 1 owner group $size $date ${file.name}"
+  }
+
+  private fun resolveLocalIpAddress(): String {
+    val interfaces = NetworkInterface.getNetworkInterfaces()
+    while (interfaces.hasMoreElements()) {
+      val networkInterface = interfaces.nextElement()
+      if (!networkInterface.isUp || networkInterface.isLoopback) {
+        continue
+      }
+      val addresses = networkInterface.inetAddresses
+      while (addresses.hasMoreElements()) {
+        val address = addresses.nextElement()
+        if (address is Inet4Address && !address.isLoopbackAddress) {
+          return address.hostAddress ?: "127.0.0.1"
+        }
+      }
+    }
+    return "127.0.0.1"
+  }
+
   private fun isPathInsideAllowedRoot(path: String): Boolean {
     val canonicalPath = File(path).canonicalPath
     val allowedRoots =
       listOf(getExternalStorageRoot().canonicalPath) +
-        resolveRemovableStorageDevices().map { device -> File(device.first).canonicalPath }
+        resolveRemovableStorageDevices().map { device -> File(device.first).canonicalPath } +
+        systemRootPaths()
 
     return allowedRoots.any { rootPath ->
       canonicalPath == rootPath || canonicalPath.startsWith("$rootPath/")
     }
   }
+
+  private fun systemRootPaths() =
+    listOf(
+      "/",
+      "/config",
+      "/data",
+      "/dev",
+      "/etc",
+      "/proc",
+      "/storage",
+      "/system",
+      "/vendor",
+    )
 
   private fun mediaStatusMap() =
     Arguments.createMap().apply {

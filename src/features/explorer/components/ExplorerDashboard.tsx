@@ -2,7 +2,6 @@ import React from 'react';
 import {ScrollView, useWindowDimensions, View} from 'react-native';
 
 import {CategoryShortcutCard} from '@/features/explorer/components/CategoryShortcutCard';
-import {ExplorerHomeSection} from '@/features/explorer/components/ExplorerHomeSection';
 import {StorageCard} from '@/features/explorer/components/StorageCard';
 import type {
   ExplorerExtendedHomeEntryId,
@@ -30,8 +29,8 @@ export const ExplorerDashboard = ({
   const itemWidth = Math.floor((width - horizontalPadding - gridGap * 2) / 3);
 
   return (
-    <View>
-      <ExplorerHomeSection title="Depolama">
+    <View style={{gap: theme.spacing.lg}}>
+      <View>
         <ScrollView
           horizontal
           contentContainerStyle={{gap: theme.spacing.sm}}
@@ -45,11 +44,9 @@ export const ExplorerDashboard = ({
             />
           ))}
         </ScrollView>
-      </ExplorerHomeSection>
+      </View>
 
-      <ExplorerHomeSection
-        description=""
-        title="Kategoriler">
+      <View>
         <View
           style={{
             flexDirection: 'row',
@@ -71,7 +68,7 @@ export const ExplorerDashboard = ({
             </View>
           ))}
         </View>
-      </ExplorerHomeSection>
+      </View>
     </View>
   );
 };

@@ -131,5 +131,8 @@ export const FileListItem = memo(
     previousProps.node.modifiedAt === nextProps.node.modifiedAt &&
     previousProps.node.sizeBytes === nextProps.node.sizeBytes &&
     previousProps.node.childCount === nextProps.node.childCount &&
-    previousProps.selected === nextProps.selected,
+    previousProps.selected === nextProps.selected &&
+    previousProps.leftMetaOverride === nextProps.leftMetaOverride &&
+    previousProps.rightMetaOverride === nextProps.rightMetaOverride &&
+    previousProps.density === nextProps.density,
 );
