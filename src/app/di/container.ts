@@ -1,11 +1,12 @@
+import {AndroidLocalFileSystemDataSource} from '@/data/datasources/AndroidLocalFileSystemDataSource';
 import {MockFileSystemDataSource} from '@/data/datasources/MockFileSystemDataSource';
 import {MockOperationExecutor} from '@/data/executors/MockOperationExecutor';
 import {OperationExecutorRegistry} from '@/data/executors/OperationExecutorRegistry';
 import {GoogleDriveProviderStub} from '@/data/providers/GoogleDriveProviderStub';
+import {HybridFileExplorerRepository} from '@/data/repositories/HybridFileExplorerRepository';
 import {OneDriveProviderStub} from '@/data/providers/OneDriveProviderStub';
 import {YandexDiskProviderStub} from '@/data/providers/YandexDiskProviderStub';
 import {InMemoryOperationJobRepository} from '@/data/repositories/InMemoryOperationJobRepository';
-import {MockFileExplorerRepository} from '@/data/repositories/MockFileExplorerRepository';
 import {CommitClipboardPasteUseCase} from '@/domain/usecases/CommitClipboardPasteUseCase';
 import {BrowseDirectoryUseCase} from '@/domain/usecases/BrowseDirectoryUseCase';
 import {GetAvailableProvidersUseCase} from '@/domain/usecases/GetAvailableProvidersUseCase';
@@ -23,6 +24,8 @@ import {OperationRetryPolicy} from '@/services/operations/OperationRetryPolicy';
 import {TransferQueueService} from '@/services/queue/TransferQueueService';
 
 class AppContainer {
+  private readonly androidLocalFileSystemDataSource =
+    new AndroidLocalFileSystemDataSource();
   private readonly fileSystemDataSource = new MockFileSystemDataSource();
   private readonly operationJobRepository = new InMemoryOperationJobRepository();
   private readonly operationExecutorRegistry = new OperationExecutorRegistry([
@@ -31,7 +34,8 @@ class AppContainer {
   private readonly operationRetryPolicy = new OperationRetryPolicy();
   private readonly operationCancellationRegistry =
     new OperationCancellationRegistry();
-  private readonly fileRepository = new MockFileExplorerRepository(
+  private readonly fileRepository = new HybridFileExplorerRepository(
+    this.androidLocalFileSystemDataSource,
     this.fileSystemDataSource,
   );
   private readonly cloudProviders = [

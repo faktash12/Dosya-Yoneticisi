@@ -34,8 +34,9 @@ export const StorageAccessPrompt = ({
         <View style={{flex: 1}}>
           <AppText weight="semibold">Tüm klasörlere erişim gerekli</AppText>
           <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-            Android bu izni kurulum anında vermez. Dosya yöneticisinin tüm
-            klasörlere erişebilmesi için sistem ekranından izin vermeniz gerekir.
+            Android 11 ve üzeri sürümlerde tüm depolamayı okuyabilmek için
+            sistem ayarlarından tam erişim izni vermeniz gerekir. Android 10 ve
+            altı sürümlerde uygulama gerekli okuma iznini ister.
           </AppText>
           <TouchableOpacity
             activeOpacity={0.86}

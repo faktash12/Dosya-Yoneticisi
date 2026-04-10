@@ -7,7 +7,10 @@ import com.facebook.react.uimanager.ViewManager
 
 class StoragePermissionPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    return listOf(StoragePermissionModule(reactContext))
+    return listOf(
+      StoragePermissionModule(reactContext),
+      LocalFileSystemModule(reactContext),
+    )
   }
 
   override fun createViewManagers(
