@@ -25,13 +25,16 @@ interface LocalFileSystemModuleShape {
   getRootDirectory: () => Promise<string>;
   listDirectory: (path: string) => Promise<NativeFileSystemNode[]>;
   readTextFile: (path: string) => Promise<string>;
+  writeTextFile: (path: string, content: string) => Promise<boolean>;
   openFile: (path: string) => Promise<boolean>;
+  createDirectory: (directoryPath: string) => Promise<string>;
   renameEntry: (sourcePath: string, nextName: string) => Promise<string>;
   createTextFile: (
     directoryPath: string,
     fileName: string,
     content: string,
   ) => Promise<string>;
+  deleteEntry: (path: string) => Promise<boolean>;
   copyEntry: (
     sourcePath: string,
     destinationDirectoryPath: string,
@@ -105,12 +108,28 @@ export const localFileSystemBridge = {
     return nativeModule.readTextFile(path);
   },
 
+  async writeTextFile(path: string, content: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.writeTextFile(path, content);
+  },
+
   async openFile(path: string): Promise<boolean> {
     if (Platform.OS !== 'android' || !nativeModule) {
       throw new LocalFileSystemUnavailableError();
     }
 
     return nativeModule.openFile(path);
+  },
+
+  async createDirectory(directoryPath: string): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.createDirectory(directoryPath);
   },
 
   async renameEntry(sourcePath: string, nextName: string): Promise<string> {
@@ -131,6 +150,14 @@ export const localFileSystemBridge = {
     }
 
     return nativeModule.createTextFile(directoryPath, fileName, content);
+  },
+
+  async deleteEntry(path: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.deleteEntry(path);
   },
 
   async copyEntry(

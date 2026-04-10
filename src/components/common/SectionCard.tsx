@@ -19,15 +19,13 @@ export const SectionCard = ({
       style={[
         {
           backgroundColor: theme.colors.surface,
-          borderRadius: theme.radii.xl,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          padding: theme.spacing.lg,
+          borderRadius: theme.radii.md,
+          padding: theme.spacing.md,
           shadowColor: '#000000',
-          shadowOffset: {width: 0, height: 10},
-          shadowOpacity: theme.mode === 'dark' ? 0.22 : 0.08,
-          shadowRadius: 18,
-          elevation: 4,
+          shadowOffset: {width: 0, height: 4},
+          shadowOpacity: theme.mode === 'dark' ? 0.14 : 0.04,
+          shadowRadius: 8,
+          elevation: 1,
         },
         style,
       ]}>

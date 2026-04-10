@@ -18,58 +18,70 @@ const iconMap = {
   downloads: FolderArchive,
 } as const;
 
+const iconToneMap = {
+  storage: {
+    backgroundColor: '#DDEAFE',
+    iconColor: '#1D4ED8',
+  },
+  'sd-card': {
+    backgroundColor: '#E5E7EB',
+    iconColor: '#374151',
+  },
+  downloads: {
+    backgroundColor: '#DCFCE7',
+    iconColor: '#15803D',
+  },
+} as const;
+
 export const StorageCard = ({
   item,
   onPress,
 }: StorageCardProps): React.JSX.Element => {
   const theme = useAppTheme();
   const Icon = iconMap[item.icon];
+  const iconTone = iconToneMap[item.icon];
   const progressWidth = `${Math.max(0, Math.min(item.usageRatio, 1)) * 100}%` as DimensionValue;
 
   return (
-    <Pressable onPress={() => onPress(item.id)}>
+    <Pressable onPress={() => onPress(item.id)} style={{width: '31.8%'}}>
       {({pressed}) => (
         <SectionCard
           style={{
             opacity: pressed ? 0.9 : 1,
-            padding: theme.spacing.md,
+            paddingHorizontal: theme.spacing.md,
+            paddingVertical: theme.spacing.sm + 2,
           }}>
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: theme.spacing.md,
+              marginBottom: theme.spacing.sm,
             }}>
             <View
               style={{
                 borderRadius: theme.radii.lg,
-                backgroundColor: theme.colors.primaryMuted,
-                padding: theme.spacing.md,
+                backgroundColor: iconTone.backgroundColor,
+                padding: theme.spacing.sm + 2,
               }}>
-              <Icon color={theme.colors.primary} size={20} />
+              <Icon color={iconTone.iconColor} size={18} />
             </View>
             <AppText style={{fontSize: theme.typography.caption}} tone="muted">
               %{Math.round(item.usageRatio * 100)}
             </AppText>
           </View>
 
-          <AppText style={{fontSize: theme.typography.cardTitle}} weight="semibold">
+          <AppText numberOfLines={1} style={{fontSize: theme.typography.body}} weight="semibold">
             {item.title}
-          </AppText>
-          <AppText
-            tone="muted"
-            style={{fontSize: theme.typography.caption, marginTop: theme.spacing.xs}}>
-            {item.subtitle}
           </AppText>
 
           <View
             style={{
-              height: 8,
+              height: 6,
               borderRadius: theme.radii.pill,
               backgroundColor: theme.colors.surfaceMuted,
               overflow: 'hidden',
-              marginTop: theme.spacing.lg,
+              marginTop: theme.spacing.md,
             }}>
             <View
               style={{
@@ -83,15 +95,10 @@ export const StorageCard = ({
 
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
               marginTop: theme.spacing.sm,
             }}>
-            <AppText style={{fontSize: theme.typography.caption}} weight="semibold">
-              {item.usedLabel}
-            </AppText>
-            <AppText style={{fontSize: theme.typography.caption}} tone="muted">
-              / {item.totalLabel}
+            <AppText numberOfLines={1} style={{fontSize: theme.typography.caption}} tone="muted">
+              {item.usedLabel} / {item.totalLabel}
             </AppText>
           </View>
         </SectionCard>

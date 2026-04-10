@@ -6,13 +6,16 @@ import {AppText} from '@/components/common/AppText';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {formatBytes} from '@/utils/formatBytes';
-import {formatRelativeDate} from '@/utils/formatRelativeDate';
+import {formatAbsoluteDate} from '@/utils/formatAbsoluteDate';
 
 interface FileListItemProps {
   node: FileSystemNode;
   selected: boolean;
   onPress: (node: FileSystemNode) => void;
   onLongPress: (node: FileSystemNode) => void;
+  leftMetaOverride?: string;
+  rightMetaOverride?: string;
+  density?: 'details' | 'compact';
 }
 
 const FileListItemComponent = ({
@@ -20,9 +23,13 @@ const FileListItemComponent = ({
   selected,
   onPress,
   onLongPress,
+  leftMetaOverride,
+  rightMetaOverride,
+  density = 'details',
 }: FileListItemProps): React.JSX.Element => {
   const theme = useAppTheme();
   const isDirectory = node.kind === 'directory';
+  const isCompact = density === 'compact';
 
   return (
     <TouchableOpacity
@@ -33,48 +40,67 @@ const FileListItemComponent = ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: theme.radii.xl,
-        borderWidth: 1,
-        borderColor: selected ? theme.colors.primary : theme.colors.border,
+        borderRadius: theme.radii.lg,
         backgroundColor: selected
           ? theme.colors.primaryMuted
           : theme.colors.surface,
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.md,
+        paddingHorizontal: isCompact ? theme.spacing.md : theme.spacing.lg,
+        paddingVertical: isCompact ? theme.spacing.sm : theme.spacing.md,
       }}>
       <View
         style={{
           marginRight: theme.spacing.md,
-          borderRadius: theme.radii.lg,
+          borderRadius: theme.radii.md,
           backgroundColor: isDirectory
             ? theme.colors.surfaceMuted
             : theme.colors.primaryMuted,
-          paddingHorizontal: theme.spacing.md,
-          paddingVertical: theme.spacing.md,
+          paddingHorizontal: isCompact ? theme.spacing.sm : theme.spacing.md,
+          paddingVertical: isCompact ? theme.spacing.sm : theme.spacing.md,
         }}>
         {isDirectory ? (
-          <Folder color={theme.colors.text} size={20} />
+          <Folder color={theme.colors.text} size={isCompact ? 18 : 20} />
         ) : (
-          <File color={theme.colors.primary} size={20} />
+          <File color={theme.colors.primary} size={isCompact ? 18 : 20} />
         )}
       </View>
 
-      <View style={{flex: 1}}>
-        <AppText style={{fontSize: theme.typography.body}} weight="semibold">
+      <View style={{flex: 1, paddingRight: theme.spacing.md}}>
+        <AppText
+          style={{
+            fontSize: isCompact ? theme.typography.caption + 1 : theme.typography.body,
+          }}
+          weight="semibold">
           {node.name}
         </AppText>
-        <AppText
-          tone="muted"
+        <View
           style={{
             marginTop: theme.spacing.xs,
-            fontSize: theme.typography.caption,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: theme.spacing.md,
           }}>
-          {isDirectory
-            ? `${node.childCount ?? 0} öğe`
-            : formatBytes(node.sizeBytes)}
-          {'  '}•{'  '}
-          {formatRelativeDate(node.modifiedAt)}
-        </AppText>
+          <AppText
+            numberOfLines={1}
+            tone="muted"
+            style={{
+              flex: 1,
+              fontSize: isCompact ? theme.typography.caption - 1 : theme.typography.caption,
+            }}>
+            {leftMetaOverride ??
+              (isDirectory
+                ? `${node.childCount ?? 0} öğe`
+                : formatBytes(node.sizeBytes).toLowerCase())}
+          </AppText>
+          <AppText
+            tone="muted"
+            style={{
+              fontSize: theme.typography.caption,
+              textAlign: 'right',
+            }}>
+            {rightMetaOverride ?? formatAbsoluteDate(node.modifiedAt)}
+          </AppText>
+        </View>
       </View>
 
       <View
@@ -83,7 +109,7 @@ const FileListItemComponent = ({
           width: 30,
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: theme.radii.pill,
+          borderRadius: theme.radii.md,
           backgroundColor: selected
             ? theme.colors.primary
             : theme.colors.surfaceMuted,

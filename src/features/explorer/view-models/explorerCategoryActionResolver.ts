@@ -1,4 +1,4 @@
-import {ROOT_DIRECTORY} from '@/constants/app';
+import {ROOT_DIRECTORY, TRASH_DIRECTORY} from '@/constants/app';
 import type {
   ExplorerCategoryAction,
   ExplorerCategoryId,
@@ -244,17 +244,14 @@ export const resolveExplorerCategoryAction = (
       ),
     },
     trash: {
-      kind: 'placeholder',
-      placeholder: createPlaceholder(
+      kind: 'directory',
+      path: TRASH_DIRECTORY,
+      providerId: 'local',
+      categoryId: 'trash',
+      emptyState: createEmptyState(
+        'Çöp kutusu boş',
+        'Silinen dosyalar burada 30 gün tutulur, sonra otomatik olarak temizlenir.',
         'trash',
-        'recycle-bin',
-        'Geri Dönüşüm',
-        'Silinen dosyalar için kalıcı geri dönüşüm akışı henüz mock seviyesinde.',
-        [
-          'Silinen içerikler şu an fiziksel geri dönüşümde tutulmuyor.',
-          'Bu ekran yine de boş veya siyah görünmez.',
-        ],
-        'Geri dön',
       ),
     },
     apps: {

@@ -22,3 +22,15 @@ export const getPathLabel = (path: string): string => {
   const segments = path.split('/').filter(Boolean);
   return segments.at(-1) ?? 'Ana bellek';
 };
+
+export const getPathSegments = (path: string): string[] => {
+  if (path === ROOT_DIRECTORY) {
+    return ['Ana bellek'];
+  }
+
+  const rootSegments = ROOT_DIRECTORY.split('/').filter(Boolean);
+  const segments = path.split('/').filter(Boolean);
+  const relativeSegments = segments.slice(rootSegments.length);
+
+  return ['Ana bellek', ...relativeSegments];
+};

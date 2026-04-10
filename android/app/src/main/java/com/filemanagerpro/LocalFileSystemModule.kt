@@ -70,6 +70,18 @@ class LocalFileSystemModule(
   }
 
   @ReactMethod
+  fun writeTextFile(path: String, content: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val file = resolveFile(path)
+      file.writeText(content, StandardCharsets.UTF_8)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_WRITE_TEXT_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
   fun openFile(path: String, promise: Promise) {
     try {
       requireStorageAccess()
@@ -104,6 +116,22 @@ class LocalFileSystemModule(
       )
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_OPEN_FILE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun createDirectory(directoryPath: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val target = resolveEntryWithinRoot(directoryPath)
+
+      if (!target.exists() && !target.mkdirs()) {
+        throw IOException("Klasör oluşturulamadı: ${target.absolutePath}")
+      }
+
+      promise.resolve(target.absolutePath)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_CREATE_DIRECTORY_FAILED", error.message, error)
     }
   }
 
@@ -161,6 +189,18 @@ class LocalFileSystemModule(
       promise.resolve(target.absolutePath)
     } catch (error: Exception) {
       promise.reject("LOCAL_FS_CREATE_TEXT_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
+  fun deleteEntry(path: String, promise: Promise) {
+    try {
+      requireStorageAccess()
+      val target = resolveExistingEntry(path)
+      deleteRecursively(target)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_FS_DELETE_FAILED", error.message, error)
     }
   }
 

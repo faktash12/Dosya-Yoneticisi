@@ -6,9 +6,9 @@ import {
   FileText,
   HardDrive,
   Image as ImageIcon,
+  Music,
   Network,
   Package,
-  RadioTower,
   ServerCog,
   Video,
 } from 'lucide-react-native';
@@ -25,7 +25,7 @@ interface CategoryShortcutCardProps {
 
 const iconMap = {
   images: ImageIcon,
-  audio: RadioTower,
+  audio: Music,
   video: Video,
   documents: FileText,
   apps: Package,
@@ -35,37 +35,86 @@ const iconMap = {
   network: Network,
 } as const;
 
+const iconToneMap = {
+  images: {
+    backgroundColor: '#FCE7F3',
+    iconColor: '#BE185D',
+  },
+  audio: {
+    backgroundColor: '#E0E7FF',
+    iconColor: '#4338CA',
+  },
+  video: {
+    backgroundColor: '#FEE2E2',
+    iconColor: '#DC2626',
+  },
+  documents: {
+    backgroundColor: '#FFEDD5',
+    iconColor: '#EA580C',
+  },
+  apps: {
+    backgroundColor: '#DCFCE7',
+    iconColor: '#16A34A',
+  },
+  recent: {
+    backgroundColor: '#DBEAFE',
+    iconColor: '#2563EB',
+  },
+  cloud: {
+    backgroundColor: '#ECFEFF',
+    iconColor: '#0F766E',
+  },
+  remote: {
+    backgroundColor: '#EDE9FE',
+    iconColor: '#7C3AED',
+  },
+  network: {
+    backgroundColor: '#F3F4F6',
+    iconColor: '#374151',
+  },
+} as const;
+
 export const CategoryShortcutCard = ({
   item,
   onPress,
 }: CategoryShortcutCardProps): React.JSX.Element => {
   const theme = useAppTheme();
   const Icon = iconMap[item.icon as keyof typeof iconMap] ?? HardDrive;
+  const iconTone =
+    iconToneMap[item.icon as keyof typeof iconToneMap] ??
+    {
+      backgroundColor: theme.colors.primaryMuted,
+      iconColor: theme.colors.primary,
+    };
 
   return (
-    <Pressable onPress={() => onPress(item.id)} style={{width: '31.5%'}}>
+    <Pressable onPress={() => onPress(item.id)} style={{width: '31.8%'}}>
       {({pressed}) => (
         <SectionCard
           style={{
-            minHeight: 116,
+            minHeight: 102,
             alignItems: 'center',
             justifyContent: 'center',
             paddingHorizontal: theme.spacing.sm,
-            paddingVertical: theme.spacing.lg,
+            paddingVertical: theme.spacing.md,
             opacity: pressed ? 0.9 : 1,
           }}>
           <View
             style={{
               borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.primaryMuted,
+              backgroundColor: iconTone.backgroundColor,
               padding: theme.spacing.md,
             }}>
-            <Icon color={theme.colors.primary} size={20} />
+            <Icon color={iconTone.iconColor} size={20} />
           </View>
 
           <View style={{marginTop: theme.spacing.md}}>
             <AppText
-              style={{fontSize: theme.typography.body, lineHeight: 20, textAlign: 'center'}}
+              style={{
+                fontSize: theme.typography.caption + 1,
+                lineHeight: 18,
+                textAlign: 'center',
+              }}
               weight="semibold">
               {item.title}
             </AppText>

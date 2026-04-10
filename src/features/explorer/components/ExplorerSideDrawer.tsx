@@ -6,8 +6,8 @@ import {
   History,
   Home,
   MonitorSmartphone,
-  Settings,
   Star,
+  StarOff,
   Trash2,
   X,
 } from 'lucide-react-native';
@@ -32,8 +32,8 @@ interface ExplorerSideDrawerProps {
   onClose: () => void;
   onSelectTab: (tab: ExplorerDrawerTab) => void;
   onOpenLocation: (locationId: DrawerLocationItem['id']) => void;
-  onOpenSettings: () => void;
   onOpenNode: (node: FileSystemNode) => void;
+  onRemoveFavorite: (node: FileSystemNode) => void;
 }
 
 const drawerLocations: DrawerLocationItem[] = [
@@ -72,30 +72,57 @@ const drawerTabs = [
 const DrawerNodeRow = ({
   node,
   onPress,
+  onRemove,
+  showPath = true,
 }: {
   node: FileSystemNode;
   onPress: (node: FileSystemNode) => void;
+  onRemove?: (node: FileSystemNode) => void;
+  showPath?: boolean;
 }): React.JSX.Element => {
   const theme = useAppTheme();
 
   return (
-    <Pressable
-      onPress={() => onPress(node)}
-      style={({pressed}) => ({
-        borderRadius: theme.radii.lg,
-        backgroundColor: pressed
-          ? theme.colors.primaryMuted
-          : theme.colors.surfaceMuted,
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.md,
-      })}>
-      <AppText weight="semibold">{node.name}</AppText>
-      <AppText
-        tone="muted"
-        style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption}}>
-        {node.path}
-      </AppText>
-    </Pressable>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.sm,
+      }}>
+      <Pressable
+        onPress={() => onPress(node)}
+        style={({pressed}) => ({
+          flex: 1,
+          borderRadius: theme.radii.md,
+          backgroundColor: pressed
+            ? theme.colors.primaryMuted
+            : theme.colors.surfaceMuted,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.md,
+        })}>
+        <AppText weight="semibold">{node.name}</AppText>
+        {showPath ? (
+          <AppText
+            tone="muted"
+            style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption}}>
+            {node.path}
+          </AppText>
+        ) : null}
+      </Pressable>
+      {onRemove ? (
+        <Pressable
+          onPress={() => onRemove(node)}
+          style={({pressed}) => ({
+            borderRadius: theme.radii.md,
+            backgroundColor: pressed
+              ? theme.colors.primaryMuted
+              : theme.colors.surfaceMuted,
+            padding: theme.spacing.sm,
+          })}>
+          <StarOff color={theme.colors.textMuted} size={18} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 };
 
@@ -106,8 +133,8 @@ export const ExplorerSideDrawer = ({
   onClose,
   onSelectTab,
   onOpenLocation,
-  onOpenSettings,
   onOpenNode,
+  onRemoveFavorite,
 }: ExplorerSideDrawerProps): React.JSX.Element => {
   const theme = useAppTheme();
   const drawerWidth = Math.min(344, Math.max(286, Dimensions.get('window').width * 0.72));
@@ -118,8 +145,8 @@ export const ExplorerSideDrawer = ({
         width: drawerWidth,
         height: '100%',
         backgroundColor: theme.colors.surface,
-        borderTopRightRadius: theme.radii.xl,
-        borderBottomRightRadius: theme.radii.xl,
+        borderTopRightRadius: theme.radii.md,
+        borderBottomRightRadius: theme.radii.md,
         borderRightWidth: 1,
         borderColor: theme.colors.border,
         paddingHorizontal: theme.spacing.lg,
@@ -146,7 +173,7 @@ export const ExplorerSideDrawer = ({
         <Pressable
           onPress={onClose}
           style={{
-            borderRadius: theme.radii.lg,
+            borderRadius: theme.radii.md,
             backgroundColor: theme.colors.surfaceMuted,
             padding: theme.spacing.sm,
           }}>
@@ -157,7 +184,7 @@ export const ExplorerSideDrawer = ({
       <View
         style={{
           flexDirection: 'row',
-          borderRadius: theme.radii.xl,
+          borderRadius: theme.radii.md,
           backgroundColor: theme.colors.surfaceMuted,
           padding: theme.spacing.xs,
           gap: theme.spacing.xs,
@@ -172,7 +199,7 @@ export const ExplorerSideDrawer = ({
               onPress={() => onSelectTab(tab.id)}
               style={{
                 flex: 1,
-                borderRadius: theme.radii.lg,
+                borderRadius: theme.radii.md,
                 backgroundColor: isActive
                   ? theme.colors.surface
                   : 'transparent',
@@ -201,7 +228,7 @@ export const ExplorerSideDrawer = ({
                   key={item.id}
                   onPress={() => onOpenLocation(item.id)}
                   style={({pressed}) => ({
-                    borderRadius: theme.radii.lg,
+                    borderRadius: theme.radii.md,
                     backgroundColor: pressed
                       ? theme.colors.primaryMuted
                       : theme.colors.surfaceMuted,
@@ -235,12 +262,18 @@ export const ExplorerSideDrawer = ({
         {activeTab === 'favorites'
           ? favorites.length > 0
             ? favorites.map(item => (
-                <DrawerNodeRow key={item.id} node={item} onPress={onOpenNode} />
+                <DrawerNodeRow
+                  key={item.id}
+                  node={item}
+                  onPress={onOpenNode}
+                  onRemove={onRemoveFavorite}
+                  showPath={false}
+                />
               ))
             : (
                 <View
                   style={{
-                    borderRadius: theme.radii.lg,
+                    borderRadius: theme.radii.md,
                     backgroundColor: theme.colors.surfaceMuted,
                     padding: theme.spacing.md,
                   }}>
@@ -260,12 +293,17 @@ export const ExplorerSideDrawer = ({
         {activeTab === 'recent'
           ? recentItems.length > 0
             ? recentItems.map(item => (
-                <DrawerNodeRow key={item.id} node={item} onPress={onOpenNode} />
+                <DrawerNodeRow
+                  key={item.id}
+                  node={item}
+                  onPress={onOpenNode}
+                  showPath={false}
+                />
               ))
             : (
                 <View
                   style={{
-                    borderRadius: theme.radii.lg,
+                    borderRadius: theme.radii.md,
                     backgroundColor: theme.colors.surfaceMuted,
                     padding: theme.spacing.md,
                   }}>
@@ -281,41 +319,6 @@ export const ExplorerSideDrawer = ({
                 </View>
               )
           : null}
-
-        {activeTab === 'locations' ? (
-          <View style={{marginTop: 'auto', paddingTop: theme.spacing.lg}}>
-            <Pressable
-              onPress={onOpenSettings}
-              style={({pressed}) => ({
-                borderRadius: theme.radii.lg,
-                backgroundColor: pressed
-                  ? theme.colors.primaryMuted
-                  : theme.colors.surfaceMuted,
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: theme.spacing.md,
-              })}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                }}>
-                <Settings color={theme.colors.primary} size={18} />
-                <View style={{flex: 1}}>
-                  <AppText weight="semibold">Ayarlar</AppText>
-                  <AppText
-                    tone="muted"
-                    style={{
-                      marginTop: theme.spacing.xs,
-                      fontSize: theme.typography.caption,
-                    }}>
-                    Görünüm ve dosya davranışını yönet
-                  </AppText>
-                </View>
-              </View>
-            </Pressable>
-          </View>
-        ) : null}
       </ScrollView>
     </View>
   );

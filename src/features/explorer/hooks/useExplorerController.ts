@@ -4,7 +4,7 @@ import {useCallback, useEffect, useEffectEvent, useMemo, useRef} from 'react';
 import {appContainer} from '@/app/di/container';
 import {useUiStore} from '@/app/store/ui.store';
 import {DirectoryNotFoundError} from '@/data/datasources/MockFileSystemDataSource';
-import {ROOT_DIRECTORY} from '@/constants/app';
+import {ROOT_DIRECTORY, TRASH_DIRECTORY} from '@/constants/app';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import type {
@@ -85,6 +85,9 @@ export const useExplorerController = () => {
       try {
         setLoading(true);
         setErrorMessage(null);
+        if (currentPath === TRASH_DIRECTORY) {
+          await localFileSystemBridge.createDirectory(TRASH_DIRECTORY);
+        }
         void appDiagnostics.recordBreadcrumb('Explorer', 'Directory load started', {
           path: currentPath,
         });

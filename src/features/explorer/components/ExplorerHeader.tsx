@@ -1,85 +1,152 @@
 import React from 'react';
-import {Pressable, View} from 'react-native';
-import {ArrowLeft, Menu} from 'lucide-react-native';
+import {Pressable, ScrollView, TextInput, View} from 'react-native';
+import {
+  ChevronRight,
+  EllipsisVertical,
+  Home,
+  Menu,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
-import {SectionCard} from '@/components/common/SectionCard';
 import {useAppTheme} from '@/hooks/useAppTheme';
 
 interface ExplorerHeaderProps {
-  currentPath: string;
-  currentPathLabel: string;
-  selectedCount: number;
-  canGoBack: boolean;
+  title: string;
+  segments?: string[];
+  isSearchOpen: boolean;
+  searchQuery: string;
+  searchPlaceholder?: string;
+  onChangeSearchQuery: (value: string) => void;
   onOpenDrawer: () => void;
-  onGoBack: () => void;
+  onToggleSearch: () => void;
+  onToggleSortMenu: () => void;
+  onToggleMoreMenu: () => void;
+  onPressSegment?: (index: number) => void;
 }
 
 export const ExplorerHeader = ({
-  currentPath,
-  currentPathLabel,
-  selectedCount,
-  canGoBack,
+  title,
+  segments,
+  isSearchOpen,
+  searchQuery,
+  searchPlaceholder = 'Bu klasörde ara',
+  onChangeSearchQuery,
   onOpenDrawer,
-  onGoBack,
+  onToggleSearch,
+  onToggleSortMenu,
+  onToggleMoreMenu,
+  onPressSegment,
 }: ExplorerHeaderProps): React.JSX.Element => {
   const theme = useAppTheme();
+  const hasSegments = (segments?.length ?? 0) > 0;
 
   return (
-    <SectionCard style={{marginBottom: theme.spacing.lg}}>
+    <View
+      style={{
+        borderBottomWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface,
+      }}>
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: theme.spacing.md,
+          gap: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
         }}>
-        <View style={{flexDirection: 'row', flex: 1, gap: theme.spacing.sm}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, gap: theme.spacing.sm}}>
           <Pressable
-            onPress={onOpenDrawer}
             hitSlop={8}
+            onPress={onOpenDrawer}
             style={{
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surfaceMuted,
-              padding: theme.spacing.md,
+              paddingVertical: theme.spacing.sm,
+              paddingRight: theme.spacing.xs,
             }}>
             <Menu color={theme.colors.text} size={18} />
           </Pressable>
-          <Pressable
-            disabled={!canGoBack}
-            onPress={onGoBack}
-            hitSlop={8}
-            style={{
-              opacity: canGoBack ? 1 : 0.42,
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surfaceMuted,
-              padding: theme.spacing.md,
-            }}>
-            <ArrowLeft color={theme.colors.text} size={18} />
-          </Pressable>
 
-          <View style={{flex: 1}}>
-            <AppText
-              style={{fontSize: theme.typography.heading}}
-              weight="bold">
-              {currentPathLabel}
+          {hasSegments ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                paddingRight: theme.spacing.md,
+              }}>
+              <Home color={theme.colors.primary} size={16} />
+              {segments?.map((segment, index) => (
+                <View
+                  key={`${segment}-${index}`}
+                  style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs}}>
+                  <ChevronRight color={theme.colors.textMuted} size={14} />
+                  <Pressable
+                    disabled={!onPressSegment}
+                    onPress={() => onPressSegment?.(index)}
+                    style={{paddingVertical: 2}}>
+                    <AppText
+                      style={{
+                        fontSize:
+                          index === (segments?.length ?? 1) - 1
+                            ? theme.typography.body
+                            : theme.typography.caption,
+                      }}
+                      tone={
+                        index === (segments?.length ?? 1) - 1 ? 'default' : 'muted'
+                      }
+                      weight={index === (segments?.length ?? 1) - 1 ? 'bold' : 'semibold'}>
+                      {segment}
+                    </AppText>
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <AppText style={{fontSize: theme.typography.heading}} weight="bold">
+              {title}
             </AppText>
-            <AppText
-              tone="muted"
-              style={{fontSize: theme.typography.caption, marginTop: theme.spacing.xs}}>
-              {currentPath}
-            </AppText>
-          </View>
+          )}
+        </View>
+
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md}}>
+          <Pressable hitSlop={8} onPress={onToggleSearch}>
+            <Search color={theme.colors.text} size={18} />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={onToggleSortMenu}>
+            <SlidersHorizontal color={theme.colors.text} size={18} />
+          </Pressable>
+          <Pressable hitSlop={8} onPress={onToggleMoreMenu}>
+            <EllipsisVertical color={theme.colors.text} size={18} />
+          </Pressable>
         </View>
       </View>
 
-      <AppText
-        tone="muted"
-        style={{fontSize: theme.typography.caption, marginTop: theme.spacing.md}}>
-        {selectedCount > 0
-          ? `${selectedCount} öğe seçildi`
-          : 'Klasörleri açmak için dokunun, çoklu seçim için uzun basın.'}
-      </AppText>
-    </SectionCard>
+      {isSearchOpen ? (
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderColor: theme.colors.border,
+            paddingHorizontal: theme.spacing.md,
+            paddingBottom: theme.spacing.sm,
+          }}>
+          <TextInput
+            onChangeText={onChangeSearchQuery}
+            placeholder={searchPlaceholder}
+            placeholderTextColor={theme.colors.textMuted}
+            style={{
+              color: theme.colors.text,
+              fontSize: theme.typography.body,
+              paddingVertical: theme.spacing.sm,
+            }}
+            value={searchQuery}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 };

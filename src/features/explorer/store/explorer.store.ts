@@ -147,7 +147,7 @@ export const useExplorerStore = create<ExplorerState>(set => ({
             isRecent: true,
           },
           ...withoutCurrent,
-        ].slice(0, 12),
+        ].slice(0, 10),
       };
     }),
 }));

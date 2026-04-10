@@ -4,9 +4,10 @@ import {
   Image,
   Pressable,
   ScrollView,
+  TextInput,
   View,
 } from 'react-native';
-import {ArrowLeft, FileImage, FileText} from 'lucide-react-native';
+import {FileImage, FileText} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
@@ -23,13 +24,16 @@ interface FilePreviewViewProps {
 
 export const FilePreviewView = ({
   node,
-  onBack,
 }: FilePreviewViewProps): React.JSX.Element => {
   const theme = useAppTheme();
   const previewMode = useMemo(() => getFileOpenMode(node), [node]);
   const [content, setContent] = useState<string>('');
+  const [draftContent, setDraftContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(previewMode !== 'image-preview');
+  const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isEditableText =
+    previewMode === 'text-preview' || previewMode === 'html-preview';
 
   useEffect(() => {
     if (previewMode === 'image-preview') {
@@ -52,6 +56,7 @@ export const FilePreviewView = ({
         }
 
         setContent(text);
+        setDraftContent(text);
       } catch (error) {
         if (!isActive) {
           return;
@@ -76,55 +81,76 @@ export const FilePreviewView = ({
     };
   }, [node.path, previewMode]);
 
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      await localFileSystemBridge.writeTextFile(node.path, draftContent);
+      setContent(draftContent);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Dosya kaydedilemedi.',
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <View style={{paddingBottom: theme.spacing.xxl}}>
       <SectionCard style={{marginBottom: theme.spacing.lg}}>
         <View
           style={{
             flexDirection: 'row',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'space-between',
             gap: theme.spacing.md,
           }}>
-          <View style={{flex: 1}}>
+          <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
             <View
               style={{
-                alignSelf: 'flex-start',
-                borderRadius: theme.radii.lg,
+                borderRadius: theme.radii.md,
                 backgroundColor: theme.colors.primaryMuted,
-                padding: theme.spacing.md,
-                marginBottom: theme.spacing.md,
+                padding: theme.spacing.sm,
               }}>
               {previewMode === 'image-preview' ? (
-                <FileImage color={theme.colors.primary} size={22} />
+                <FileImage color={theme.colors.primary} size={18} />
               ) : (
-                <FileText color={theme.colors.primary} size={22} />
+                <FileText color={theme.colors.primary} size={18} />
               )}
             </View>
-            <AppText
-              style={{fontSize: theme.typography.title, lineHeight: 30}}
-              weight="bold">
-              {node.name}
-            </AppText>
-            <AppText
-              tone="muted"
-              style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption}}>
-              {previewMode === 'html-preview'
-                ? 'HTML önizlemesi'
-                : previewMode === 'image-preview'
-                  ? 'Görsel önizlemesi'
-                  : 'Metin önizlemesi'}
-            </AppText>
+            <View style={{flex: 1}}>
+              <AppText
+                style={{fontSize: theme.typography.body, lineHeight: 20}}
+                numberOfLines={1}>
+                {node.name}
+              </AppText>
+              <AppText
+                tone="muted"
+                style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption}}>
+                {previewMode === 'html-preview'
+                  ? 'HTML belgesi'
+                  : previewMode === 'image-preview'
+                    ? 'Görsel önizlemesi'
+                    : 'Metin belgesi'}
+              </AppText>
+            </View>
           </View>
-          <Pressable
-            onPress={onBack}
-            style={{
-              borderRadius: theme.radii.lg,
-              backgroundColor: theme.colors.surfaceMuted,
-              padding: theme.spacing.md,
-            }}>
-            <ArrowLeft color={theme.colors.text} size={18} />
-          </Pressable>
+          {isEditableText ? (
+            <Pressable
+              onPress={() => {
+                void handleSave();
+              }}
+              style={{
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.sm,
+              }}>
+              <AppText style={{fontSize: theme.typography.caption}} weight="semibold">
+                {isSaving ? 'Kaydediliyor' : 'Kaydet'}
+              </AppText>
+            </Pressable>
+          ) : null}
         </View>
       </SectionCard>
 
@@ -153,14 +179,29 @@ export const FilePreviewView = ({
           />
         ) : (
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            <AppText
-              style={{
-                fontSize: theme.typography.body,
-                lineHeight: 24,
-                fontFamily: theme.typography.mono,
-              }}>
-              {content}
-            </AppText>
+            {isEditableText ? (
+              <TextInput
+                multiline
+                onChangeText={setDraftContent}
+                style={{
+                  color: theme.colors.text,
+                  fontSize: theme.typography.body,
+                  lineHeight: 24,
+                  minHeight: 320,
+                  textAlignVertical: 'top',
+                }}
+                value={draftContent}
+              />
+            ) : (
+              <AppText
+                style={{
+                  fontSize: theme.typography.body,
+                  lineHeight: 24,
+                  fontFamily: theme.typography.mono,
+                }}>
+                {content}
+              </AppText>
+            )}
           </ScrollView>
         )}
       </SectionCard>
