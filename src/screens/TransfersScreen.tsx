@@ -36,10 +36,10 @@ export const TransfersScreen = (): React.JSX.Element => {
     <ScreenContainer>
       <SectionCard style={{marginBottom: theme.spacing.lg}}>
         <AppText style={{fontSize: theme.typography.title}} weight="bold">
-          Islem Kuyrugu
+          İşlem Kuyruğu
         </AppText>
         <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-          Copy, move, rename, delete ve create folder isleri burada izlenir.
+          Kopyalama, taşıma, yeniden adlandırma ve klasör işlemleri burada izlenir.
         </AppText>
         <View
           style={{
@@ -48,7 +48,7 @@ export const TransfersScreen = (): React.JSX.Element => {
             gap: theme.spacing.md,
           }}>
           <AppText tone="muted">Aktif: {activeJobs.length}</AppText>
-          <AppText tone="muted">Gecmis: {historyJobs.length}</AppText>
+          <AppText tone="muted">Geçmiş: {historyJobs.length}</AppText>
         </View>
       </SectionCard>
 
@@ -61,7 +61,7 @@ export const TransfersScreen = (): React.JSX.Element => {
             <AppText
               weight="semibold"
               style={{marginBottom: theme.spacing.sm, marginTop: theme.spacing.xs}}>
-              Aktif Isler
+              Aktif İşler
             </AppText>
           ) : null
         }
@@ -74,7 +74,7 @@ export const TransfersScreen = (): React.JSX.Element => {
                 <AppText
                   weight="semibold"
                   style={{marginBottom: theme.spacing.sm, marginTop: theme.spacing.lg}}>
-                  Gecmis
+                  Geçmiş
                 </AppText>
               ) : null}
               <SectionCard>
@@ -104,7 +104,7 @@ export const TransfersScreen = (): React.JSX.Element => {
                   />
                 </View>
                 <AppText tone="muted" style={{marginTop: theme.spacing.sm}}>
-                  {item.progress.completedUnits} / {item.progress.totalUnits} adim
+                  {item.progress.completedUnits} / {item.progress.totalUnits} adım
                   {'  '}•{'  '}
                   {formatBytes(
                     item.sourceItems.reduce(
@@ -153,7 +153,7 @@ export const TransfersScreen = (): React.JSX.Element => {
                           paddingHorizontal: theme.spacing.md,
                           paddingVertical: theme.spacing.sm,
                         }}>
-                        <AppText weight="semibold">Iptal et</AppText>
+                        <AppText weight="semibold">İptal et</AppText>
                       </Pressable>
                     )}
                   </View>
@@ -164,10 +164,9 @@ export const TransfersScreen = (): React.JSX.Element => {
         }}
         ListEmptyComponent={
           <SectionCard>
-            <AppText weight="semibold">Henuz islem yok</AppText>
+            <AppText weight="semibold">Henüz işlem yok</AppText>
             <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-              Explorer uzerinden kopyala, kes ve yapistir aksiyonlari bu kuyruğa
-              dusecek.
+              Dosyalar ekranındaki kopyala, kes ve yapıştır işlemleri burada listelenir.
             </AppText>
           </SectionCard>
         }

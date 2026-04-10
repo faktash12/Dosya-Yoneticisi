@@ -1,6 +1,6 @@
 import React from 'react';
-import {View} from 'react-native';
-import {FolderSearch} from 'lucide-react-native';
+import {Pressable, View} from 'react-native';
+import {FolderSearch, Menu} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {CategoryShortcutCard} from '@/features/explorer/components/CategoryShortcutCard';
@@ -13,10 +13,12 @@ import {useAppTheme} from '@/hooks/useAppTheme';
 
 interface ExplorerDashboardProps {
   onSelectEntry: (entryId: ExplorerHomeEntryId) => void;
+  onOpenDrawer: () => void;
 }
 
 export const ExplorerDashboard = ({
   onSelectEntry,
+  onOpenDrawer,
 }: ExplorerDashboardProps): React.JSX.Element => {
   const theme = useAppTheme();
 
@@ -29,19 +31,20 @@ export const ExplorerDashboard = ({
           justifyContent: 'space-between',
           marginBottom: theme.spacing.xl,
         }}>
-        <View
+        <Pressable
+          onPress={onOpenDrawer}
           style={{
             height: 44,
             width: 44,
             borderRadius: theme.radii.lg,
-            backgroundColor: theme.colors.primaryMuted,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <AppText style={{fontSize: theme.typography.cardTitle}} weight="bold">
-            F
-          </AppText>
-        </View>
+          <Menu color={theme.colors.text} size={20} />
+        </Pressable>
 
         <View style={{flex: 1, marginHorizontal: theme.spacing.md}}>
           <AppText style={{fontSize: theme.typography.title}} weight="bold">

@@ -1,4 +1,5 @@
 import {AndroidLocalFileSystemDataSource} from '@/data/datasources/AndroidLocalFileSystemDataSource';
+import {AndroidLocalOperationExecutor} from '@/data/executors/AndroidLocalOperationExecutor';
 import {MockFileSystemDataSource} from '@/data/datasources/MockFileSystemDataSource';
 import {MockOperationExecutor} from '@/data/executors/MockOperationExecutor';
 import {OperationExecutorRegistry} from '@/data/executors/OperationExecutorRegistry';
@@ -29,6 +30,7 @@ class AppContainer {
   private readonly fileSystemDataSource = new MockFileSystemDataSource();
   private readonly operationJobRepository = new InMemoryOperationJobRepository();
   private readonly operationExecutorRegistry = new OperationExecutorRegistry([
+    new AndroidLocalOperationExecutor(),
     new MockOperationExecutor(),
   ]);
   private readonly operationRetryPolicy = new OperationRetryPolicy();

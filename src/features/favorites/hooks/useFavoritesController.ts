@@ -7,8 +7,10 @@ import {appContainer} from '@/app/di/container';
 import type {MainTabParamList} from '@/app/navigation/types';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useExplorerStore} from '@/features/explorer/store/explorer.store';
+import {getFileOpenMode} from '@/features/explorer/utils/fileOpenSupport';
 import {useFavoritesStore} from '@/features/favorites/store/favorites.store';
 import {appDiagnostics} from '@/services/logging/AppDiagnostics';
+import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
 
 export const useFavoritesController = () => {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
@@ -54,16 +56,35 @@ export const useFavoritesController = () => {
         return;
       }
 
-      Alert.alert(
-        'Önizleme hazır değil',
-        `${item.name} için önizleme henüz eklenmedi.`,
-      );
+      const fileOpenMode = getFileOpenMode(item);
+      explorerState.recordRecentNode(item);
 
-      appContainer.logger.info({
-        scope: 'Favorites',
-        message: 'Favorite file preview is not implemented yet',
-        data: {itemId: item.id, path: item.path},
-      });
+      if (
+        fileOpenMode === 'text-preview' ||
+        fileOpenMode === 'html-preview' ||
+        fileOpenMode === 'image-preview'
+      ) {
+        explorerState.openPreview(item);
+        navigation.navigate('Explorer');
+        return;
+      }
+
+      void localFileSystemBridge
+        .openFile(item.path)
+        .catch(error => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : `${item.name} için önizleme henüz eklenmedi.`;
+
+          Alert.alert('Önizleme hazır değil', message);
+
+          appContainer.logger.info({
+            scope: 'Favorites',
+            message: 'Favorite file could not be opened',
+            data: {itemId: item.id, path: item.path},
+          });
+        });
     },
     [navigation],
   );

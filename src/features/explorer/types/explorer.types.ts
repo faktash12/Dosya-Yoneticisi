@@ -1,6 +1,6 @@
 import type {StorageProviderScope} from '@/domain/entities/FileSystemNode';
 
-export type ExplorerMode = 'home' | 'browser' | 'placeholder';
+export type ExplorerMode = 'home' | 'browser' | 'placeholder' | 'preview';
 
 export type ExplorerCategoryId =
   | 'internal-storage'

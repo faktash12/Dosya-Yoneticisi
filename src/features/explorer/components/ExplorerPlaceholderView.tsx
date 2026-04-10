@@ -51,7 +51,7 @@ const placeholderMeta = {
   },
   'unsupported-category': {
     icon: ServerCog,
-    sectionTitle: 'Güvenli fallback',
+    sectionTitle: 'Güvenli yönlendirme',
   },
   'file-preview': {
     icon: FileImage,
@@ -156,10 +156,10 @@ export const ExplorerPlaceholderView = ({
                     <Cloud color={theme.colors.primary} size={16} />
                     <AppText weight="semibold">{provider.displayName}</AppText>
                   </View>
-                  <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+            <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
                     {provider.connected
                       ? 'Bağlı hesap hazır.'
-                      : 'Mock sağlayıcı hazır, bağlantı bu sürümde bilgi ekranı seviyesinde tutuluyor.'}
+                      : 'Bağlantı kurulmadı. Bu sağlayıcı için bilgilendirme ekranı gösteriliyor.'}
                   </AppText>
                 </View>
               ))}

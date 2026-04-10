@@ -24,6 +24,18 @@ interface NativeFileSystemNode {
 interface LocalFileSystemModuleShape {
   getRootDirectory: () => Promise<string>;
   listDirectory: (path: string) => Promise<NativeFileSystemNode[]>;
+  readTextFile: (path: string) => Promise<string>;
+  openFile: (path: string) => Promise<boolean>;
+  copyEntry: (
+    sourcePath: string,
+    destinationDirectoryPath: string,
+    conflictStrategy: 'overwrite' | 'skip' | 'rename',
+  ) => Promise<string>;
+  moveEntry: (
+    sourcePath: string,
+    destinationDirectoryPath: string,
+    conflictStrategy: 'overwrite' | 'skip' | 'rename',
+  ) => Promise<string>;
 }
 
 const nativeModule = NativeModules.LocalFileSystemModule as
@@ -77,5 +89,53 @@ export const localFileSystemBridge = {
 
       throw error;
     }
+  },
+
+  async readTextFile(path: string): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.readTextFile(path);
+  },
+
+  async openFile(path: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.openFile(path);
+  },
+
+  async copyEntry(
+    sourcePath: string,
+    destinationDirectoryPath: string,
+    conflictStrategy: 'overwrite' | 'skip' | 'rename' = 'rename',
+  ): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.copyEntry(
+      sourcePath,
+      destinationDirectoryPath,
+      conflictStrategy,
+    );
+  },
+
+  async moveEntry(
+    sourcePath: string,
+    destinationDirectoryPath: string,
+    conflictStrategy: 'overwrite' | 'skip' | 'rename' = 'rename',
+  ): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.moveEntry(
+      sourcePath,
+      destinationDirectoryPath,
+      conflictStrategy,
+    );
   },
 };

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react-native';
 
 import type {MainTabParamList} from '@/app/navigation/types';
+import {resolveExplorerCategoryAction} from '@/features/explorer/view-models/explorerCategoryActionResolver';
+import {useExplorerStore} from '@/features/explorer/store/explorer.store';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {ExplorerScreen} from '@/screens/ExplorerScreen';
 import {FavoritesScreen} from '@/screens/FavoritesScreen';
@@ -47,10 +49,49 @@ export const MainTabs = (): React.JSX.Element => {
           return <Icon color={color} size={size} />;
         },
       })}>
-      <Tab.Screen name="Explorer" component={ExplorerScreen} />
-      <Tab.Screen name="Favorites" component={FavoritesScreen} />
-      <Tab.Screen name="Transfers" component={TransfersScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen
+        name="Explorer"
+        component={ExplorerScreen}
+        listeners={({navigation}) => ({
+          tabPress: event => {
+            if (!navigation.isFocused()) {
+              return;
+            }
+
+            event.preventDefault();
+            const explorerState = useExplorerStore.getState();
+            const rootAction = resolveExplorerCategoryAction('internal-storage');
+
+            if (explorerState.mode === 'browser' && rootAction.kind === 'directory') {
+              if (explorerState.currentPath !== rootAction.path) {
+                explorerState.openBrowser(rootAction.path, {
+                  categoryId: rootAction.categoryId,
+                  emptyState: rootAction.emptyState,
+                });
+                return;
+              }
+            }
+
+            explorerState.openHome();
+          },
+        })}
+        options={{title: 'Dosyalar', tabBarLabel: 'Dosyalar'}}
+      />
+      <Tab.Screen
+        name="Favorites"
+        component={FavoritesScreen}
+        options={{title: 'Favoriler', tabBarLabel: 'Favoriler'}}
+      />
+      <Tab.Screen
+        name="Transfers"
+        component={TransfersScreen}
+        options={{title: 'Aktarımlar', tabBarLabel: 'Aktarımlar'}}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{title: 'Ayarlar', tabBarLabel: 'Ayarlar'}}
+      />
     </Tab.Navigator>
   );
 };

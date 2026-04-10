@@ -1,6 +1,6 @@
 import React from 'react';
 import {Pressable, View} from 'react-native';
-import {ArrowLeft, Copy, Scissors} from 'lucide-react-native';
+import {ArrowLeft, Copy, Menu, Scissors} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
@@ -11,6 +11,7 @@ interface ExplorerHeaderProps {
   currentPathLabel: string;
   selectedCount: number;
   canGoBack: boolean;
+  onOpenDrawer: () => void;
   onGoBack: () => void;
   onCopySelection: () => void;
   onCutSelection: () => void;
@@ -21,6 +22,7 @@ export const ExplorerHeader = ({
   currentPathLabel,
   selectedCount,
   canGoBack,
+  onOpenDrawer,
   onGoBack,
   onCopySelection,
   onCutSelection,
@@ -32,14 +34,25 @@ export const ExplorerHeader = ({
       <View
         style={{
           flexDirection: 'row',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'space-between',
           gap: theme.spacing.md,
         }}>
-        <View style={{flexDirection: 'row', flex: 1, gap: theme.spacing.md}}>
+        <View style={{flexDirection: 'row', flex: 1, gap: theme.spacing.sm}}>
+          <Pressable
+            onPress={onOpenDrawer}
+            hitSlop={8}
+            style={{
+              borderRadius: theme.radii.lg,
+              backgroundColor: theme.colors.surfaceMuted,
+              padding: theme.spacing.md,
+            }}>
+            <Menu color={theme.colors.text} size={18} />
+          </Pressable>
           <Pressable
             disabled={!canGoBack}
             onPress={onGoBack}
+            hitSlop={8}
             style={{
               opacity: canGoBack ? 1 : 0.42,
               borderRadius: theme.radii.lg,
@@ -50,11 +63,8 @@ export const ExplorerHeader = ({
           </Pressable>
 
           <View style={{flex: 1}}>
-            <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
-              Klasör
-            </AppText>
             <AppText
-              style={{fontSize: theme.typography.heading, marginTop: theme.spacing.xs}}
+              style={{fontSize: theme.typography.heading}}
               weight="bold">
               {currentPathLabel}
             </AppText>

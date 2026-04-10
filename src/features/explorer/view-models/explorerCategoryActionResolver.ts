@@ -46,9 +46,9 @@ export const createUnsupportedCategoryPlaceholder = (
       'Bu kaynak güvenli fallback ile açıldı. Kategori eşlemesi bulunamadı veya kaynak kullanılamıyor.',
     [
       'Explorer kapanmadan devam eder.',
-      'Dashboard üzerinden başka bir kategori seçebilirsiniz.',
+      'Ana ekrandan başka bir kategori seçebilirsiniz.',
     ],
-    'Dashboard’a dön',
+    'Ana sayfaya dön',
   );
 
 export const createQuickActionPlaceholder = (
@@ -198,7 +198,7 @@ export const resolveExplorerCategoryAction = (
           'Korunan klasörler için yazma işlemleri açılmamıştır.',
           'Explorer akışı bozulmadan geri dönebilirsiniz.',
         ],
-        'Explorer’a dön',
+        'Geri dön',
       ),
     },
     cloud: {
@@ -226,7 +226,7 @@ export const resolveExplorerCategoryAction = (
           'SFTP ve benzeri uç noktalar sonraki fazda bağlanacak.',
           'Bu arayüz kullanıcının boş ekran görmesini engeller.',
         ],
-        'Dashboard’a dön',
+        'Ana sayfaya dön',
       ),
     },
     network: {
@@ -240,7 +240,7 @@ export const resolveExplorerCategoryAction = (
           'Ağ yolu entegrasyonları henüz aktif değil.',
           'Kategori açıldığında ekran her zaman anlamlı bilgi verir.',
         ],
-        'Dashboard’a dön',
+        'Ana sayfaya dön',
       ),
     },
     trash: {
@@ -254,7 +254,7 @@ export const resolveExplorerCategoryAction = (
           'Silinen içerikler şu an fiziksel geri dönüşümde tutulmuyor.',
           'Bu ekran yine de boş veya siyah görünmez.',
         ],
-        'Explorer’a dön',
+        'Geri dön',
       ),
     },
     apps: {
@@ -268,7 +268,7 @@ export const resolveExplorerCategoryAction = (
           'Kurulu uygulama envanteri bu sürümde bağlanmadı.',
           'Yüzey aktif ama güvenli placeholder davranışıyla açılır.',
         ],
-        'Dashboard’a dön',
+        'Ana sayfaya dön',
       ),
     },
   };

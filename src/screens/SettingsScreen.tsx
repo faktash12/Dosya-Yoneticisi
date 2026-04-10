@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {Pressable, ScrollView, View} from 'react-native';
+import {Pressable, ScrollView, Switch, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Monitor, Moon, Sun} from 'lucide-react-native';
@@ -30,7 +30,9 @@ export const SettingsScreen = (): React.JSX.Element => {
   const providers = useCloudStore(state => state.providers);
   const hydrate = useCloudStore(state => state.hydrate);
   const preference = useUiStore(state => state.colorSchemePreference);
+  const showHiddenFiles = useUiStore(state => state.showHiddenFiles);
   const setPreference = useUiStore(state => state.setColorSchemePreference);
+  const setShowHiddenFiles = useUiStore(state => state.setShowHiddenFiles);
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -49,7 +51,7 @@ export const SettingsScreen = (): React.JSX.Element => {
             Ayarlar
           </AppText>
           <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-            Tema, provider baglantilari ve cihaz depolama analizi burada yonetilir.
+            Tema, görünüm tercihleri ve depolama davranışı burada yönetilir.
           </AppText>
         </SectionCard>
 
@@ -105,7 +107,35 @@ export const SettingsScreen = (): React.JSX.Element => {
         </SectionCard>
 
         <SectionCard style={{marginBottom: theme.spacing.lg}}>
-          <AppText weight="semibold">Cloud Provider Hazirligi</AppText>
+          <AppText weight="semibold">Dosya görünümü</AppText>
+          <View
+            style={{
+              marginTop: theme.spacing.md,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: theme.spacing.md,
+            }}>
+            <View style={{flex: 1}}>
+              <AppText weight="semibold">Gizli dosyaları göster</AppText>
+              <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+                Açık olduğunda “.” ile başlayan dosya ve klasörler listelenir.
+              </AppText>
+            </View>
+            <Switch
+              onValueChange={setShowHiddenFiles}
+              thumbColor="#FFFFFF"
+              trackColor={{
+                false: theme.colors.border,
+                true: theme.colors.primary,
+              }}
+              value={showHiddenFiles}
+            />
+          </View>
+        </SectionCard>
+
+        <SectionCard style={{marginBottom: theme.spacing.lg}}>
+          <AppText weight="semibold">Bulut sağlayıcıları</AppText>
           <View style={{marginTop: theme.spacing.md, gap: theme.spacing.sm}}>
             {providers.map(provider => (
               <View
@@ -118,8 +148,8 @@ export const SettingsScreen = (): React.JSX.Element => {
                 <AppText weight="semibold">{provider.displayName}</AppText>
                 <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
                   {provider.connected
-                    ? 'Bagli hesap hazir'
-                    : 'Baglanti yok, OAuth adapteri sonraki fazda eklenebilir'}
+                    ? 'Bağlı hesap hazır'
+                    : 'Henüz bağlantı yapılmadı. Sağlayıcı entegrasyonu daha sonra tamamlanabilir.'}
                 </AppText>
               </View>
             ))}
@@ -129,7 +159,7 @@ export const SettingsScreen = (): React.JSX.Element => {
         <SectionCard>
           <AppText weight="semibold">Depolama Analizi</AppText>
           <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-            Kategori bazli kullanim ve buyuk klasor taramasi icin giris noktasi.
+            Kategori bazlı kullanım ve büyük klasör taraması için giriş noktası.
           </AppText>
           <Pressable
             onPress={() => navigation.navigate('StorageAnalysis')}
@@ -142,7 +172,7 @@ export const SettingsScreen = (): React.JSX.Element => {
               paddingVertical: theme.spacing.md,
             }}>
             <AppText style={{color: '#FFFFFF'}} weight="semibold">
-              Analizi ac
+              Analizi aç
             </AppText>
           </Pressable>
         </SectionCard>

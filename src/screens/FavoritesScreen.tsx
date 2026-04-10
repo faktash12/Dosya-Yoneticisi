@@ -18,7 +18,7 @@ export const FavoritesScreen = (): React.JSX.Element => {
     <ScreenContainer>
       <SectionCard style={{marginBottom: theme.spacing.xl}}>
         <AppText tone="accent" style={{fontSize: theme.typography.caption}} weight="semibold">
-          Favorites
+          Favoriler
         </AppText>
         <AppText
           style={{fontSize: theme.typography.title, marginTop: theme.spacing.sm}}
