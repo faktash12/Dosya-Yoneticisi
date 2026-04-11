@@ -1,13 +1,15 @@
 import {AndroidLocalFileSystemDataSource} from '@/data/datasources/AndroidLocalFileSystemDataSource';
+import {GoogleDriveCloudProvider} from '@/data/datasources/cloud/GoogleDriveCloudProvider';
+import {PhaseTwoPlaceholderCloudProvider} from '@/data/datasources/cloud/PhaseTwoPlaceholderCloudProvider';
+import {YandexDiskCloudProvider} from '@/data/datasources/cloud/YandexDiskCloudProvider';
 import {AndroidLocalOperationExecutor} from '@/data/executors/AndroidLocalOperationExecutor';
 import {MockFileSystemDataSource} from '@/data/datasources/MockFileSystemDataSource';
 import {MockOperationExecutor} from '@/data/executors/MockOperationExecutor';
 import {OperationExecutorRegistry} from '@/data/executors/OperationExecutorRegistry';
-import {GoogleDriveProviderStub} from '@/data/providers/GoogleDriveProviderStub';
 import {HybridFileExplorerRepository} from '@/data/repositories/HybridFileExplorerRepository';
-import {OneDriveProviderStub} from '@/data/providers/OneDriveProviderStub';
-import {YandexDiskProviderStub} from '@/data/providers/YandexDiskProviderStub';
+import {CloudProviderRegistry} from '@/data/repositories/cloud/CloudProviderRegistry';
 import {InMemoryOperationJobRepository} from '@/data/repositories/InMemoryOperationJobRepository';
+import {cloudProviderConfigs} from '@/config/cloudConfig';
 import {CommitClipboardPasteUseCase} from '@/domain/usecases/CommitClipboardPasteUseCase';
 import {BrowseDirectoryUseCase} from '@/domain/usecases/BrowseDirectoryUseCase';
 import {GetAvailableProvidersUseCase} from '@/domain/usecases/GetAvailableProvidersUseCase';
@@ -18,6 +20,9 @@ import {QueueDeleteJobUseCase} from '@/domain/usecases/QueueDeleteJobUseCase';
 import {QueueMoveJobUseCase} from '@/domain/usecases/QueueMoveJobUseCase';
 import {QueueRenameJobUseCase} from '@/domain/usecases/QueueRenameJobUseCase';
 import {appLogger} from '@/services/logging/AppLogger';
+import {OAuthService} from '@/services/auth/OAuthService';
+import {AsyncStorageSecureTokenStore} from '@/services/auth/SecureTokenStore';
+import {CloudHttpClient} from '@/services/cloud/CloudHttpClient';
 import {OperationCancellationRegistry} from '@/services/operations/OperationCancellationRegistry';
 import {OperationClipboardService} from '@/services/operations/OperationClipboardService';
 import {OperationQueueProcessor} from '@/services/operations/OperationQueueProcessor';
@@ -40,11 +45,24 @@ class AppContainer {
     this.androidLocalFileSystemDataSource,
     this.fileSystemDataSource,
   );
+  private readonly secureTokenStore = new AsyncStorageSecureTokenStore();
+  private readonly oauthService = new OAuthService(this.secureTokenStore);
+  private readonly cloudHttpClient = new CloudHttpClient(this.oauthService);
   private readonly cloudProviders = [
-    new GoogleDriveProviderStub(),
-    new OneDriveProviderStub(),
-    new YandexDiskProviderStub(),
+    new GoogleDriveCloudProvider(
+      cloudProviderConfigs.google_drive,
+      this.oauthService,
+      this.cloudHttpClient,
+    ),
+    new PhaseTwoPlaceholderCloudProvider('onedrive', 'OneDrive'),
+    new PhaseTwoPlaceholderCloudProvider('dropbox', 'Dropbox'),
+    new YandexDiskCloudProvider(
+      cloudProviderConfigs.yandex_disk,
+      this.oauthService,
+      this.cloudHttpClient,
+    ),
   ];
+  readonly cloudProviderRegistry = new CloudProviderRegistry(this.cloudProviders);
 
   readonly browseDirectoryUseCase = new BrowseDirectoryUseCase(
     this.fileRepository,

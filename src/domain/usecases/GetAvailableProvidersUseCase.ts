@@ -1,14 +1,10 @@
 import type {CloudProviderSummary} from '@/domain/entities/CloudProvider';
-import type {CloudStorageProvider} from '@/domain/repositories/CloudStorageProvider';
+import type {CloudStorageRepository} from '@/domain/repositories/CloudStorageRepository';
 
 export class GetAvailableProvidersUseCase {
-  constructor(private readonly providers: CloudStorageProvider[]) {}
+  constructor(private readonly providers: CloudStorageRepository[]) {}
 
   async execute(): Promise<CloudProviderSummary[]> {
-    const statuses = await Promise.all(
-      this.providers.map(provider => provider.getConnectionStatus()),
-    );
-
-    return statuses.map(status => status.summary);
+    return Promise.all(this.providers.map(provider => provider.getSummary()));
   }
 }

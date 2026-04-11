@@ -6,7 +6,7 @@ import {AppText} from '@/components/common/AppText';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {formatBytes} from '@/utils/formatBytes';
-import {formatAbsoluteDate} from '@/utils/formatAbsoluteDate';
+import {formatAbsoluteDateTime} from '@/utils/formatAbsoluteDate';
 
 interface FileListItemProps {
   node: FileSystemNode;
@@ -97,7 +97,7 @@ const FileListItemComponent = ({
               fontSize: theme.typography.caption,
               textAlign: 'right',
             }}>
-            {rightMetaOverride ?? formatAbsoluteDate(node.modifiedAt)}
+            {rightMetaOverride ?? formatAbsoluteDateTime(node.modifiedAt)}
           </AppText>
         </View>
       </View>

@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Pencil,
   FolderOpen,
-  RotateCcw,
   Scissors,
   Send,
   Star,
@@ -16,6 +15,7 @@ import {
 
 import {AppText} from '@/components/common/AppText';
 import {useAppTheme} from '@/hooks/useAppTheme';
+import {useTranslation} from '@/i18n';
 
 interface ExplorerSelectionActionBarProps {
   selectedCount: number;
@@ -29,6 +29,7 @@ interface ExplorerSelectionActionBarProps {
   onMove: () => void;
   onAddFavorite: () => void;
   onSelectAll?: () => void;
+  onEmptyTrash?: () => void;
   onGoToFolder?: () => void;
   onExtractArchive?: () => void;
   canGoToFolder?: boolean;
@@ -93,12 +94,14 @@ export const ExplorerSelectionActionBar = ({
   onMove,
   onAddFavorite,
   onSelectAll,
+  onEmptyTrash,
   onGoToFolder,
   onExtractArchive,
   canGoToFolder = false,
   canExtractArchive = false,
 }: ExplorerSelectionActionBarProps): React.JSX.Element => {
   const theme = useAppTheme();
+  const {t} = useTranslation();
 
   return (
     <View
@@ -111,7 +114,7 @@ export const ExplorerSelectionActionBar = ({
         paddingTop: theme.spacing.sm,
       }}>
       <AppText style={{fontSize: theme.typography.caption}} weight="semibold">
-        {selectedCount} öğe seçildi
+        {t('selection.selectedCount', {count: selectedCount})}
       </AppText>
       <ScrollView
         horizontal
@@ -122,31 +125,39 @@ export const ExplorerSelectionActionBar = ({
           paddingRight: theme.spacing.md,
         }}>
         {isTrashView && onSelectAll ? (
-          <ActionButton icon={Copy} label="Tümünü Seç" onPress={onSelectAll} />
+          <ActionButton icon={Copy} label={t('selection.selectAll')} onPress={onSelectAll} />
         ) : null}
-        <ActionButton icon={Trash2} label="Sil" onPress={onDelete} />
-        <ActionButton
-          icon={isTrashView ? RotateCcw : EyeOff}
-          label={isTrashView ? 'Geri yükle' : 'Gizle'}
-          onPress={onPrimaryAction}
-          showSeparator={!isTrashView}
-        />
+        <ActionButton icon={Trash2} label={t('selection.delete')} onPress={onDelete} />
+        {isTrashView && onEmptyTrash ? (
+          <ActionButton
+            icon={Trash2}
+            label={t('selection.emptyTrash')}
+            onPress={onEmptyTrash}
+            showSeparator={false}
+          />
+        ) : (
+          <ActionButton
+            icon={EyeOff}
+            label={t('selection.toggleVisibility')}
+            onPress={onPrimaryAction}
+          />
+        )}
         {!isTrashView ? (
           <>
             {canGoToFolder && onGoToFolder ? (
-              <ActionButton icon={FolderOpen} label="Klasöre Git" onPress={onGoToFolder} />
+              <ActionButton icon={FolderOpen} label={t('selection.openFolder')} onPress={onGoToFolder} />
             ) : null}
             {canExtractArchive && onExtractArchive ? (
-              <ActionButton icon={Archive} label="Klasöre Çıkar" onPress={onExtractArchive} />
+              <ActionButton icon={Archive} label={t('selection.extractArchive')} onPress={onExtractArchive} />
             ) : null}
-            <ActionButton icon={Send} label="Gönder" onPress={onShare} />
-            <ActionButton icon={ExternalLink} label="Birlikte Aç" onPress={onOpenWith} />
-            <ActionButton icon={Pencil} label="Adlandır" onPress={onRename} />
-            <ActionButton icon={Star} label="Favori" onPress={onAddFavorite} />
-            <ActionButton icon={Copy} label="Kopya" onPress={onCopy} />
+            <ActionButton icon={Send} label={t('selection.share')} onPress={onShare} />
+            <ActionButton icon={ExternalLink} label={t('selection.openWith')} onPress={onOpenWith} />
+            <ActionButton icon={Pencil} label={t('selection.rename')} onPress={onRename} />
+            <ActionButton icon={Star} label={t('selection.favorite')} onPress={onAddFavorite} />
+            <ActionButton icon={Copy} label={t('selection.copy')} onPress={onCopy} />
             <ActionButton
               icon={Scissors}
-              label="Taşı"
+              label={t('selection.move')}
               onPress={onMove}
               showSeparator={false}
             />

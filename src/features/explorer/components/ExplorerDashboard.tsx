@@ -27,6 +27,12 @@ export const ExplorerDashboard = ({
   const horizontalPadding = theme.spacing.md * 2;
   const gridGap = theme.spacing.sm;
   const itemWidth = Math.floor((width - horizontalPadding - gridGap * 2) / 3);
+  const socialShortcutItems = shortcutItems.filter(item =>
+    ['whatsapp', 'telegram', 'instagram'].includes(item.id),
+  );
+  const primaryShortcutItems = shortcutItems.filter(
+    item => !['whatsapp', 'telegram', 'instagram'].includes(item.id),
+  );
 
   return (
     <View style={{gap: theme.spacing.lg}}>
@@ -53,7 +59,7 @@ export const ExplorerDashboard = ({
             flexWrap: 'wrap',
             marginHorizontal: -(gridGap / 2),
           }}>
-          {shortcutItems.map(item => (
+          {primaryShortcutItems.map(item => (
             <View
               key={item.id}
               style={{
@@ -69,6 +75,36 @@ export const ExplorerDashboard = ({
           ))}
         </View>
       </View>
+
+      {socialShortcutItems.length > 0 ? (
+        <View>
+          <View
+            style={{
+              height: 1,
+              backgroundColor: theme.colors.border,
+              marginBottom: theme.spacing.md,
+            }}
+          />
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              marginHorizontal: -(gridGap / 2),
+            }}>
+            {socialShortcutItems.map(item => (
+              <View
+                key={item.id}
+                style={{
+                  width: '33.333%',
+                  paddingHorizontal: gridGap / 2,
+                  marginBottom: theme.spacing.sm,
+                }}>
+                <CategoryShortcutCard item={item} onPress={onSelectEntry} />
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 };

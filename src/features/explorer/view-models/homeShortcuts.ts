@@ -44,15 +44,27 @@ export const homeShortcuts: ExplorerShortcutItem[] = [
     icon: 'cloud',
   },
   {
-    id: 'remote',
-    title: 'Uzak',
-    subtitle: 'Harici uzak bağlantılar',
-    icon: 'remote',
-  },
-  {
     id: 'network',
     title: 'PC’den erişim',
     subtitle: 'Ağ paylaşımı ve masaüstü erişimi',
     icon: 'network',
+  },
+  {
+    id: 'whatsapp',
+    title: 'WhatsApp',
+    subtitle: 'WhatsApp medya ve dosyaları',
+    icon: 'whatsapp',
+  },
+  {
+    id: 'telegram',
+    title: 'Telegram',
+    subtitle: 'Telegram medya ve dosyaları',
+    icon: 'telegram',
+  },
+  {
+    id: 'instagram',
+    title: 'Instagram',
+    subtitle: 'Instagram medya klasörleri',
+    icon: 'instagram',
   },
 ];

@@ -13,8 +13,8 @@ import {
 
 import {AppText} from '@/components/common/AppText';
 import {SectionCard} from '@/components/common/SectionCard';
-import {EmptyState} from '@/components/feedback/EmptyState';
 import type {CloudProviderSummary} from '@/domain/entities/CloudProvider';
+import {CloudHubView} from '@/features/cloud/components/CloudHubView';
 import type {ExplorerPlaceholderView as ExplorerPlaceholderModel} from '@/features/explorer/types/explorer.types';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {
@@ -25,6 +25,7 @@ import {
 interface ExplorerPlaceholderViewProps {
   placeholder: ExplorerPlaceholderModel;
   providers?: CloudProviderSummary[];
+  onProvidersChanged?: (providers: CloudProviderSummary[]) => void;
   onBack: () => void;
 }
 
@@ -37,9 +38,9 @@ const placeholderMeta = {
     icon: Cloud,
     sectionTitle: 'Bulut sağlayıcıları',
   },
-  'remote-access': {
+  'social-groups': {
     icon: ServerCog,
-    sectionTitle: 'Uzak erişim hazırlığı',
+    sectionTitle: 'Sosyal klasörler',
   },
   'network-access': {
     icon: Network,
@@ -66,6 +67,7 @@ const placeholderMeta = {
 export const ExplorerPlaceholderView = ({
   placeholder,
   providers = [],
+  onProvidersChanged,
   onBack,
 }: ExplorerPlaceholderViewProps): React.JSX.Element => {
   const theme = useAppTheme();
@@ -77,6 +79,16 @@ export const ExplorerPlaceholderView = ({
   const [ftpStatus, setFtpStatus] = useState<FtpServerStatus | null>(null);
   const [ftpError, setFtpError] = useState<string | null>(null);
   const [isFtpBusy, setFtpBusy] = useState(false);
+
+  if (isCloud) {
+    return (
+      <CloudHubView
+        onBack={onBack}
+        onProvidersChanged={onProvidersChanged ?? (() => undefined)}
+        providers={providers}
+      />
+    );
+  }
 
   const handleStartFtp = async () => {
     try {
@@ -169,47 +181,6 @@ export const ExplorerPlaceholderView = ({
           ))}
         </View>
       </SectionCard>
-      ) : null}
-
-      {isCloud ? (
-        providers.length > 0 ? (
-          <SectionCard>
-            <AppText weight="semibold">Hazır sağlayıcılar</AppText>
-            <View style={{marginTop: theme.spacing.md, gap: theme.spacing.sm}}>
-              {providers.map(provider => (
-                <View
-                  key={provider.providerId}
-                  style={{
-                    borderRadius: theme.radii.lg,
-                    backgroundColor: theme.colors.surfaceMuted,
-                    padding: theme.spacing.md,
-                  }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: theme.spacing.sm,
-                    }}>
-                    <Cloud color={theme.colors.primary} size={16} />
-                    <AppText weight="semibold">{provider.displayName}</AppText>
-                  </View>
-            <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
-                    {provider.connected
-                      ? 'Bağlı hesap hazır.'
-                      : 'Bağlantı kurulmadı. Bu sağlayıcı için bilgilendirme ekranı gösteriliyor.'}
-                  </AppText>
-                </View>
-              ))}
-            </View>
-          </SectionCard>
-        ) : (
-          <EmptyState
-            description="Bulut hub hazır, ancak henüz bağlı bir sağlayıcı bulunmuyor."
-            icon="cloud"
-            supportingText="Sağlayıcı listesi boş olsa bile ekran stabil ve açıklayıcı kalır."
-            title="Henüz bağlı sağlayıcı yok"
-          />
-        )
       ) : null}
 
       {isNetwork ? (

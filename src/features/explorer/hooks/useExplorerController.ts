@@ -12,11 +12,11 @@ import type {
   ExplorerPlaceholderView,
 } from '@/features/explorer/types/explorer.types';
 import {getFileOpenMode} from '@/features/explorer/utils/fileOpenSupport';
-import {resolveExplorerCategoryAction} from '@/features/explorer/view-models/explorerCategoryActionResolver';
+import {filterNodesForCategory} from '@/features/explorer/utils/mediaClassification';
 import {mapUnknownError} from '@/services/error/ErrorMapper';
 import {appDiagnostics} from '@/services/logging/AppDiagnostics';
 import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
-import {getParentPath, getPathLabel} from '@/utils/path';
+import {getPathLabel} from '@/utils/path';
 
 export const useExplorerController = () => {
   const mode = useExplorerStore(state => state.mode);
@@ -33,6 +33,9 @@ export const useExplorerController = () => {
     state => state.activeDirectoryCategoryId,
   );
   const activeEmptyState = useExplorerStore(state => state.activeEmptyState);
+  const logicalRootPath = useExplorerStore(state => state.logicalRootPath);
+  const logicalRootLabel = useExplorerStore(state => state.logicalRootLabel);
+  const browserHistory = useExplorerStore(state => state.browserHistory);
   const showHiddenFiles = useUiStore(state => state.showHiddenFiles);
   const setNodes = useExplorerStore(state => state.setNodes);
   const setLoading = useExplorerStore(state => state.setLoading);
@@ -43,15 +46,13 @@ export const useExplorerController = () => {
   const openBrowser = useExplorerStore(state => state.openBrowser);
   const openPlaceholder = useExplorerStore(state => state.openPlaceholder);
   const openPreview = useExplorerStore(state => state.openPreview);
+  const restorePreviousBrowser = useExplorerStore(
+    state => state.restorePreviousBrowser,
+  );
   const requestReload = useExplorerStore(state => state.requestReload);
   const recordRecentNode = useExplorerStore(state => state.recordRecentNode);
 
   const loadRequestIdRef = useRef(0);
-  const documentExtensions = useMemo(
-    () => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ods', 'txt', 'log', 'md', 'csv', 'rtf', 'odt', 'odf', 'ppt', 'pptx'],
-    [],
-  );
-
   const handleLoadError = useEffectEvent((error: unknown) => {
     setNodes([]);
 
@@ -97,47 +98,92 @@ export const useExplorerController = () => {
           path: currentPath,
         });
 
-        const result =
-          activeDirectoryCategoryId === 'documents'
-            ? await localFileSystemBridge.searchFilesByExtensions(
-                ROOT_DIRECTORY,
-                documentExtensions,
-                showHiddenFiles,
-              )
-            : activeDirectoryCategoryId === 'recent'
-              ? (
-                  await localFileSystemBridge.searchDirectory(
-                  ROOT_DIRECTORY,
-                  '.',
+        let result;
+        if (activeDirectoryCategoryId === 'documents') {
+          result = await localFileSystemBridge.listFilesByCategory(
+            'documents',
+            showHiddenFiles,
+            0,
+          );
+        } else if (activeDirectoryCategoryId === 'recent') {
+          result = await localFileSystemBridge.listRecentFiles(
+            300,
+            showHiddenFiles,
+            Date.now() - 30 * 24 * 60 * 60 * 1000,
+          );
+        } else if (
+          activeDirectoryCategoryId === 'images' &&
+          currentPath === ROOT_DIRECTORY
+        ) {
+          const folders = await localFileSystemBridge.listKnownMediaFolders(
+            'images',
+            showHiddenFiles,
+          );
+          result =
+            folders.length > 0
+              ? folders
+              : await localFileSystemBridge.listFilesByCategory(
+                  'images',
                   showHiddenFiles,
-                )
-              )
-                .filter(node => node.kind === 'file')
-                .sort(
-                  (leftNode, rightNode) =>
-                    new Date(rightNode.modifiedAt).getTime() -
-                    new Date(leftNode.modifiedAt).getTime(),
-                )
-                .slice(0, 15)
-            : await appContainer.browseDirectoryUseCase.execute({
-                path: currentPath,
-                providerId: 'local',
-              });
+                  100,
+                );
+        } else if (
+          activeDirectoryCategoryId === 'video' &&
+          currentPath === ROOT_DIRECTORY
+        ) {
+          const folders = await localFileSystemBridge.listKnownMediaFolders(
+            'video',
+            showHiddenFiles,
+          );
+          result =
+            folders.length > 0
+              ? folders
+              : await localFileSystemBridge.listFilesByCategory(
+                  'video',
+                  showHiddenFiles,
+                  100,
+                );
+        } else if (
+          activeDirectoryCategoryId === 'audio' &&
+          currentPath === ROOT_DIRECTORY
+        ) {
+          const folders = await localFileSystemBridge.listKnownMediaFolders(
+            'audio',
+            showHiddenFiles,
+          );
+          result =
+            folders.length > 0
+              ? folders
+              : await localFileSystemBridge.listFilesByCategory(
+                  'audio',
+                  showHiddenFiles,
+                  100,
+                );
+        } else {
+          result = await appContainer.browseDirectoryUseCase.execute({
+            path: currentPath,
+            providerId: 'local',
+          });
+        }
         const visibleNodes = showHiddenFiles
           ? result
           : result.filter(node => !node.name.startsWith('.'));
+        const categoryFilteredNodes = filterNodesForCategory(
+          visibleNodes,
+          activeDirectoryCategoryId,
+        );
 
         if (loadRequestIdRef.current !== requestId) {
           return;
         }
 
-        setNodes(visibleNodes);
+        setNodes(categoryFilteredNodes);
         void appDiagnostics.recordBreadcrumb(
           'Explorer',
           'Directory load completed',
           {
             path: currentPath,
-            nodeCount: visibleNodes.length,
+            nodeCount: categoryFilteredNodes.length,
             durationMs: Date.now() - startedAt,
           },
         );
@@ -162,7 +208,6 @@ export const useExplorerController = () => {
   }, [
     currentPath,
     activeDirectoryCategoryId,
-    documentExtensions,
     handleLoadError,
     mode,
     reloadVersion,
@@ -182,7 +227,12 @@ export const useExplorerController = () => {
 
       if (node.kind === 'directory') {
         clearSelection();
-        openBrowser(node.path);
+        openBrowser(node.path, {
+          categoryId: activeDirectoryCategoryId,
+          emptyState: activeEmptyState,
+          logicalRootPath,
+          logicalRootLabel,
+        });
         return;
       }
 
@@ -196,12 +246,17 @@ export const useExplorerController = () => {
           return;
         }
 
+        if (fileOpenMode === 'video-preview') {
+          await localFileSystemBridge.openVideoPlayer(node.path);
+          clearSelection();
+          return;
+        }
+
         if (
           fileOpenMode === 'text-preview' ||
           fileOpenMode === 'html-preview' ||
           fileOpenMode === 'image-preview' ||
-          fileOpenMode === 'audio-preview' ||
-          fileOpenMode === 'video-preview'
+          fileOpenMode === 'audio-preview'
         ) {
           clearSelection();
           openPreview(node);
@@ -230,7 +285,16 @@ export const useExplorerController = () => {
         });
       }
     },
-    [clearSelection, openBrowser, openPreview, recordRecentNode],
+    [
+      activeDirectoryCategoryId,
+      activeEmptyState,
+      clearSelection,
+      logicalRootLabel,
+      logicalRootPath,
+      openBrowser,
+      openPreview,
+      recordRecentNode,
+    ],
   );
 
   const goBack = useCallback(() => {
@@ -249,6 +313,8 @@ export const useExplorerController = () => {
       openBrowser(currentPath, {
         categoryId: activeDirectoryCategoryId,
         emptyState: activeEmptyState,
+        logicalRootPath,
+        logicalRootLabel,
       });
       return;
     }
@@ -257,34 +323,26 @@ export const useExplorerController = () => {
       return;
     }
 
-    const categoryRootPath =
-      activeDirectoryCategoryId != null
-        ? (() => {
-            const action = resolveExplorerCategoryAction(activeDirectoryCategoryId);
-            return action.kind === 'directory' ? action.path : null;
-          })()
-        : null;
-
-    if (currentPath === ROOT_DIRECTORY) {
-      openHome();
-      return;
-    }
-
-    if (categoryRootPath != null && currentPath === categoryRootPath) {
-      openHome();
+    if (browserHistory.length > 1) {
+      clearSelection();
+      restorePreviousBrowser();
       return;
     }
 
     clearSelection();
-    openBrowser(getParentPath(currentPath));
+    openHome();
   }, [
+    activeDirectoryCategoryId,
     clearSelection,
     currentPath,
     mode,
     openBrowser,
     openHome,
-    activeDirectoryCategoryId,
     activeEmptyState,
+    browserHistory.length,
+    logicalRootLabel,
+    logicalRootPath,
+    restorePreviousBrowser,
   ]);
 
   const handleToggleSelection = useCallback(
@@ -293,7 +351,11 @@ export const useExplorerController = () => {
   );
 
   const openBrowserPath = useCallback(
-    (path: string, context?: ExplorerDirectoryContext | null) => {
+    (
+      path: string,
+      context?: ExplorerDirectoryContext | null,
+      options?: {resetHistory?: boolean},
+    ) => {
       void appDiagnostics.recordBreadcrumb(
         'Explorer',
         'Open directory path requested',
@@ -303,7 +365,7 @@ export const useExplorerController = () => {
         },
       );
       clearSelection();
-      openBrowser(path, context);
+      openBrowser(path, context, options);
     },
     [clearSelection, openBrowser],
   );
@@ -333,6 +395,9 @@ export const useExplorerController = () => {
       selectedNodeIds,
       activeDirectoryCategoryId,
       activeEmptyState,
+      logicalRootPath,
+      logicalRootLabel,
+      browserHistory,
       previewNode,
       recentOpenedNodes,
       canGoBack: mode !== 'home',
@@ -349,6 +414,7 @@ export const useExplorerController = () => {
     [
       activeDirectoryCategoryId,
       activeEmptyState,
+      browserHistory,
       clearSelection,
       currentPath,
       errorMessage,
@@ -357,6 +423,8 @@ export const useExplorerController = () => {
       isLoading,
       mode,
       nodes,
+      logicalRootLabel,
+      logicalRootPath,
       openBrowserPath,
       openHome,
       openNode,

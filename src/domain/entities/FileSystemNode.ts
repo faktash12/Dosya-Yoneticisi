@@ -1,8 +1,9 @@
 export type StorageProviderScope =
   | 'local'
-  | 'google-drive'
-  | 'one-drive'
-  | 'yandex-disk';
+  | 'google_drive'
+  | 'onedrive'
+  | 'dropbox'
+  | 'yandex_disk';
 
 export type FileNodeKind = 'file' | 'directory';
 
@@ -28,4 +29,3 @@ export interface FileSystemNode {
   childCount?: number;
   permissions: FilePermissions;
 }
-

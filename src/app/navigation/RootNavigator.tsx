@@ -3,6 +3,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 
 import type {RootStackParamList} from '@/app/navigation/types';
 import {useAppTheme} from '@/hooks/useAppTheme';
+import {useTranslation} from '@/i18n';
 import {ExplorerScreen} from '@/screens/ExplorerScreen';
 import {SettingsScreen} from '@/screens/SettingsScreen';
 import {StorageAnalysisScreen} from '@/screens/StorageAnalysisScreen';
@@ -11,6 +12,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const RootNavigator = (): React.JSX.Element => {
   const theme = useAppTheme();
+  const {t} = useTranslation();
 
   return (
     <Stack.Navigator
@@ -32,12 +34,12 @@ export const RootNavigator = (): React.JSX.Element => {
       <Stack.Screen
         component={SettingsScreen}
         name="Settings"
-        options={{title: 'Ayarlar'}}
+        options={{title: t('settings.title')}}
       />
       <Stack.Screen
         component={StorageAnalysisScreen}
         name="StorageAnalysis"
-        options={{title: 'Depolama Analizi'}}
+        options={{title: t('analysis.title')}}
       />
     </Stack.Navigator>
   );

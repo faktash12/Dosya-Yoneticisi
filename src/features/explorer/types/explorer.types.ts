@@ -11,11 +11,13 @@ export type ExplorerCategoryId =
   | 'video'
   | 'system'
   | 'cloud'
-  | 'remote'
   | 'network'
   | 'trash'
   | 'apps'
-  | 'recent';
+  | 'recent'
+  | 'whatsapp'
+  | 'telegram'
+  | 'instagram';
 
 export type ExplorerHomeEntryId = ExplorerCategoryId | 'sd-card';
 export type ExplorerExtendedHomeEntryId = ExplorerCategoryId | 'sd-card' | 'usb';
@@ -23,7 +25,7 @@ export type ExplorerExtendedHomeEntryId = ExplorerCategoryId | 'sd-card' | 'usb'
 export type ExplorerPlaceholderKind =
   | 'system-info'
   | 'cloud-hub'
-  | 'remote-access'
+  | 'social-groups'
   | 'network-access'
   | 'recycle-bin'
   | 'apps-info'
@@ -43,7 +45,9 @@ export type ExplorerDashboardIcon =
   | 'apps'
   | 'recent'
   | 'cloud'
-  | 'remote'
+  | 'whatsapp'
+  | 'telegram'
+  | 'instagram'
   | 'network'
   | 'trash';
 
@@ -67,6 +71,13 @@ export interface ExplorerPlaceholderView {
 export interface ExplorerDirectoryContext {
   categoryId: ExplorerCategoryId | null;
   emptyState: ExplorerEmptyStateConfig | null;
+  logicalRootPath?: string | null;
+  logicalRootLabel?: string | null;
+}
+
+export interface ExplorerBrowserHistoryEntry {
+  path: string;
+  context: ExplorerDirectoryContext | null;
 }
 
 export type ExplorerCategoryAction =

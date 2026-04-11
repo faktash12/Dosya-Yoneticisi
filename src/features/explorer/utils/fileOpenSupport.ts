@@ -1,4 +1,9 @@
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
+import {
+  audioExtensions,
+  imageExtensions,
+  videoExtensions,
+} from '@/features/explorer/utils/mediaClassification';
 
 export type FileOpenMode =
   | 'text-preview'
@@ -10,9 +15,6 @@ export type FileOpenMode =
 
 const textExtensions = new Set(['txt', 'log', 'md', 'json', 'csv']);
 const htmlExtensions = new Set(['html', 'htm']);
-const imageExtensions = new Set(['img', 'jpg', 'jpeg', 'png', 'webp']);
-const audioExtensions = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']);
-const videoExtensions = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', '3gp']);
 const officeExtensions = new Set(['doc', 'docx', 'xls', 'xlsx']);
 
 export const getFileOpenMode = (node: FileSystemNode): FileOpenMode => {

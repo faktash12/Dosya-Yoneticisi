@@ -1,6 +1,7 @@
 import React from 'react';
 import {Pressable, ScrollView, TextInput, View} from 'react-native';
 import {
+  ArrowLeft,
   ChevronRight,
   EllipsisVertical,
   Home,
@@ -21,6 +22,7 @@ interface ExplorerHeaderProps {
   searchPlaceholder?: string;
   onChangeSearchQuery: (value: string) => void;
   onOpenDrawer: () => void;
+  onNavigateBack?: () => void;
   onToggleSearch: () => void;
   onToggleSortMenu: () => void;
   onToggleMoreMenu: () => void;
@@ -36,6 +38,7 @@ export const ExplorerHeader = ({
   searchPlaceholder = 'Bu klasörde ara',
   onChangeSearchQuery,
   onOpenDrawer,
+  onNavigateBack,
   onToggleSearch,
   onToggleSortMenu,
   onToggleMoreMenu,
@@ -64,12 +67,16 @@ export const ExplorerHeader = ({
         <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, gap: theme.spacing.sm}}>
           <Pressable
             hitSlop={8}
-            onPress={onOpenDrawer}
+            onPress={onNavigateBack ?? onOpenDrawer}
             style={{
               paddingVertical: theme.spacing.sm,
               paddingRight: theme.spacing.xs,
             }}>
-            <Menu color={theme.colors.text} size={18} />
+            {onNavigateBack ? (
+              <ArrowLeft color={theme.colors.text} size={18} />
+            ) : (
+              <Menu color={theme.colors.text} size={18} />
+            )}
           </Pressable>
 
           {hasSegments ? (

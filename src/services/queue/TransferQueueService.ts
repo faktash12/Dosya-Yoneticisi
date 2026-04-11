@@ -46,7 +46,7 @@ const mockTasks: TransferTask[] = [
       nodeId: 'google-drive-root',
       name: 'Google Drive',
       path: '/',
-      providerId: 'google-drive',
+      providerId: 'google_drive',
     },
     priority: 2,
     createdAt: '2026-04-09T08:10:00.000Z',
@@ -75,4 +75,3 @@ export class TransferQueueService {
     return [...mockTasks, task];
   }
 }
-

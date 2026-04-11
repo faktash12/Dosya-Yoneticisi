@@ -58,13 +58,6 @@ export const explorerDashboardItems: ExplorerDashboardItem[] = [
     icon: 'cloud',
   },
   {
-    id: 'remote',
-    categoryId: 'remote',
-    title: 'Uzak',
-    subtitle: 'Harici uzak kaynaklar için hazır giriş yüzeyi',
-    icon: 'remote',
-  },
-  {
     id: 'network',
     categoryId: 'network',
     title: 'Ağdan erişim',

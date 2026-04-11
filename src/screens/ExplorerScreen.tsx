@@ -7,15 +7,18 @@ import {
   Image,
   Pressable,
   RefreshControl,
+  SectionList,
   ScrollView,
   Switch,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {
   Check,
+  Download,
   Eye,
   EyeOff,
   FilePlus2,
@@ -66,11 +69,18 @@ import {homeShortcuts} from '@/features/explorer/view-models/homeShortcuts';
 import {storageCards} from '@/features/explorer/view-models/storageCards';
 import {useFavoritesStore} from '@/features/favorites/store/favorites.store';
 import {useAppTheme} from '@/hooks/useAppTheme';
+import {useTranslation} from '@/i18n';
 import {localFileSystemBridge} from '@/services/platform/LocalFileSystemBridge';
 import {
   storagePermissionBridge,
   type StorageAccessStatus,
 } from '@/services/platform/StoragePermissionBridge';
+import {
+  isArchiveNode,
+  isImageNode,
+  isVideoNode,
+} from '@/features/explorer/utils/mediaClassification';
+import {groupRecentNodesByDay} from '@/features/explorer/utils/recentSections';
 import {formatAbsoluteDate} from '@/utils/formatAbsoluteDate';
 import {formatBytes} from '@/utils/formatBytes';
 import {getParentPath, getPathSegments} from '@/utils/path';
@@ -91,9 +101,43 @@ interface InstalledAppItem {
   packageName: string;
   label: string;
   sizeBytes: number;
+  installedAt: string;
   sourceDir: string;
   iconBase64?: string | null;
   isSystemApp: boolean;
+  canUninstall?: boolean;
+}
+
+type SocialAppId = 'whatsapp' | 'telegram' | 'instagram';
+type SocialAccountId = 'default' | 'business';
+type SocialGroupId =
+  | 'documents'
+  | 'images'
+  | 'audio'
+  | 'video'
+  | 'files'
+  | 'voice'
+  | 'music';
+
+interface SocialGroupDescriptor {
+  accountId: SocialAccountId;
+  id: SocialGroupId;
+  label: string;
+}
+
+interface SocialSectionDescriptor {
+  id: string;
+  title: string;
+  groups: SocialGroupDescriptor[];
+}
+
+interface SocialExplorerState {
+  appId: SocialAppId;
+  accountId: SocialAccountId;
+  groupId: SocialGroupId | null;
+  groupLabel: string | null;
+  nodes: FileSystemNode[];
+  isLoading: boolean;
 }
 
 const genericDirectoryEmptyState = {
@@ -138,7 +182,75 @@ const documentSections: Array<{
   },
 ];
 
-const archiveExtensions = new Set(['zip', 'rar', '7z']);
+const socialGroupLabels: Record<SocialGroupId, string> = {
+  documents: 'Belgeler',
+  images: 'Görüntüler',
+  audio: 'Ses',
+  video: 'Videolar',
+  files: 'Dosyalar',
+  voice: 'Sesli Notlar',
+  music: 'Müzik',
+};
+
+const socialAppLabels: Record<SocialAppId, string> = {
+  whatsapp: 'WhatsApp',
+  telegram: 'Telegram',
+  instagram: 'Instagram',
+};
+
+const createSocialGroup = (
+  accountId: SocialAccountId,
+  id: SocialGroupId,
+  label: string,
+): SocialGroupDescriptor => ({accountId, id, label});
+
+const whatsappGroups = (accountId: SocialAccountId): SocialGroupDescriptor[] => [
+  createSocialGroup(accountId, 'images', 'Görüntüler'),
+  createSocialGroup(accountId, 'video', 'Videolar'),
+  createSocialGroup(accountId, 'documents', 'Dokümanlar'),
+  createSocialGroup(accountId, 'voice', 'WhatsApp Sesli Notlar'),
+  createSocialGroup(accountId, 'audio', 'Müzik / Ses'),
+];
+
+const socialSectionsByApp: Record<SocialAppId, SocialSectionDescriptor[]> = {
+  whatsapp: [
+    {
+      id: 'whatsapp-default',
+      title: 'WhatsApp Hesap',
+      groups: whatsappGroups('default'),
+    },
+    {
+      id: 'whatsapp-business',
+      title: 'WhatsApp Business',
+      groups: whatsappGroups('business'),
+    },
+  ],
+  telegram: [
+    {
+      id: 'telegram',
+      title: 'Telegram',
+      groups: [
+        createSocialGroup('default', 'documents', 'Belgeler'),
+        createSocialGroup('default', 'images', 'Görüntüler'),
+        createSocialGroup('default', 'video', 'Videolar'),
+        createSocialGroup('default', 'voice', 'Ses Kayıtları'),
+        createSocialGroup('default', 'music', 'Müzik'),
+      ],
+    },
+  ],
+  instagram: [
+    {
+      id: 'instagram',
+      title: 'Instagram',
+      groups: [
+        createSocialGroup('default', 'images', 'Görüntüler'),
+        createSocialGroup('default', 'video', 'Videolar'),
+        createSocialGroup('default', 'documents', 'Belgeler'),
+        createSocialGroup('default', 'files', 'Diğer Dosyalar'),
+      ],
+    },
+  ],
+};
 
 const segmentLabelMap: Record<string, string> = {
   'Ana bellek': 'Ana bellek',
@@ -158,27 +270,6 @@ const getDisplayLabelForSegment = (segment: string): string =>
 const areStringArraysEqual = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((item, index) => item === right[index]);
 
-const isImageNode = (node: FileSystemNode): boolean => {
-  const extension = node.extension?.toLowerCase();
-  return (
-    node.kind === 'file' &&
-    (['img', 'jpg', 'jpeg', 'png', 'webp', 'gif'].includes(extension ?? '') ||
-      node.mimeType?.startsWith('image/') === true)
-  );
-};
-
-const isVideoNode = (node: FileSystemNode): boolean => {
-  const extension = node.extension?.toLowerCase();
-  return (
-    node.kind === 'file' &&
-    (['mp4', 'mkv', 'webm', 'mov', 'avi', '3gp'].includes(extension ?? '') ||
-      node.mimeType?.startsWith('video/') === true)
-  );
-};
-
-const isArchiveNode = (node: FileSystemNode): boolean =>
-  node.kind === 'file' && archiveExtensions.has(node.extension?.toLowerCase() ?? '');
-
 const getDocumentSectionId = (node: FileSystemNode): DocumentSectionId | null => {
   if (node.kind !== 'file') {
     return null;
@@ -188,15 +279,6 @@ const getDocumentSectionId = (node: FileSystemNode): DocumentSectionId | null =>
   const section = documentSections.find(item => item.extensions.includes(extension));
   return section?.id ?? null;
 };
-
-const getTrashDaysLeft = (deletedAt: string): number =>
-  Math.max(
-    0,
-    30 -
-      Math.floor(
-        (Date.now() - new Date(deletedAt).getTime()) / (1000 * 60 * 60 * 24),
-      ),
-  );
 
 const getNodeSummary = (node: FileSystemNode): string =>
   node.kind === 'directory'
@@ -328,6 +410,8 @@ const SortModeGlyph = ({
 export const ExplorerScreen = (): React.JSX.Element => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const theme = useAppTheme();
+  const {t, locale} = useTranslation();
+  const {width: windowWidth} = useWindowDimensions();
   const explorer = useExplorerController();
   const operations = useExplorerOperations();
   const providers = useCloudStore(state => state.providers);
@@ -368,12 +452,120 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const [renameTargetNode, setRenameTargetNode] = useState<FileSystemNode | null>(null);
   const [usbRoots, setUsbRoots] = useState<string[]>([]);
   const [sdRoots, setSdRoots] = useState<string[]>([]);
+  const [storageStats, setStorageStats] = useState<{
+    totalBytes: number;
+    availableBytes: number;
+    usedBytes: number;
+    downloadsSizeBytes: number;
+  } | null>(null);
   const [installedApps, setInstalledApps] = useState<InstalledAppItem[]>([]);
   const [isAppsLoading, setAppsLoading] = useState(false);
   const [selectedAppPackage, setSelectedAppPackage] = useState<string | null>(null);
+  const [socialExplorer, setSocialExplorer] = useState<SocialExplorerState | null>(null);
   const [recentContextNode, setRecentContextNode] = useState<FileSystemNode | null>(null);
   const [documentSectionFilter, setDocumentSectionFilter] =
     useState<DocumentSectionId | null>(null);
+  const getViewModeLabel = useCallback(
+    (modeId: (typeof viewModes)[number]['id']) => {
+      if (locale !== 'en') {
+        return viewModes.find(mode => mode.id === modeId)?.label ?? modeId;
+      }
+
+      return (
+        {
+          details: 'Detailed icons',
+          compact: 'Compact icons',
+          'large-icons': 'Large icons',
+          'small-icons': 'Small icons',
+        } satisfies Record<(typeof viewModes)[number]['id'], string>
+      )[modeId];
+    },
+    [locale],
+  );
+  const getSortModeLabel = useCallback(
+    (modeId: (typeof sortModes)[number]['id']) => {
+      if (locale !== 'en') {
+        return sortModes.find(mode => mode.id === modeId)?.label ?? modeId;
+      }
+
+      return (
+        {
+          'name-asc': 'Name ascending',
+          'name-desc': 'Name descending',
+          'size-asc': 'Size ascending',
+          'size-desc': 'Size descending',
+          'date-asc': 'Date ascending',
+          'date-desc': 'Date descending',
+          'type-asc': 'Type ascending',
+          'type-desc': 'Type descending',
+        } satisfies Record<(typeof sortModes)[number]['id'], string>
+      )[modeId];
+    },
+    [locale],
+  );
+  const getDocumentSectionTitle = useCallback(
+    (sectionId: DocumentSectionId) => {
+      if (locale !== 'en') {
+        return documentSections.find(section => section.id === sectionId)?.title ?? 'Belgeler';
+      }
+
+      return (
+        {
+          pdf: 'PDF files',
+          word: 'Word',
+          excel: 'Excel',
+          other: 'Other',
+        } satisfies Record<DocumentSectionId, string>
+      )[sectionId];
+    },
+    [locale],
+  );
+  const getSocialAppLabel = useCallback(
+    (appId: SocialAppId) => socialAppLabels[appId],
+    [],
+  );
+  const getSocialSectionTitle = useCallback(
+    (sectionId: string) => {
+      if (locale !== 'en') {
+        return (
+          socialSectionsByApp.whatsapp.find(section => section.id === sectionId)?.title ??
+          socialSectionsByApp.telegram.find(section => section.id === sectionId)?.title ??
+          socialSectionsByApp.instagram.find(section => section.id === sectionId)?.title ??
+          sectionId
+        );
+      }
+
+      return (
+        {
+          'whatsapp-default': 'WhatsApp Account',
+          'whatsapp-business': 'WhatsApp Business',
+          telegram: 'Telegram',
+          instagram: 'Instagram',
+        } satisfies Record<string, string>
+      )[sectionId] ?? sectionId;
+    },
+    [locale],
+  );
+  const getSocialGroupLabel = useCallback(
+    (groupId: SocialGroupId) => {
+      if (locale !== 'en') {
+        return socialGroupLabels[groupId];
+      }
+
+      return (
+        {
+          documents: 'Documents',
+          images: 'Images',
+          audio: 'Audio',
+          video: 'Videos',
+          files: 'Files',
+          voice: 'Voice Notes',
+          music: 'Music',
+        } satisfies Record<SocialGroupId, string>
+      )[groupId];
+    },
+    [locale],
+  );
   const selectedIdSet = useMemo(() => new Set(explorer.selectedNodeIds), [explorer.selectedNodeIds]);
   const isTrashView = explorer.currentPath === TRASH_DIRECTORY;
   const activeCategoryRootPath = useMemo(() => {
@@ -391,10 +583,19 @@ export const ExplorerScreen = (): React.JSX.Element => {
     activeCategoryRootPath != null &&
     explorer.currentPath !== activeCategoryRootPath;
   const isGridView = isMediaFolderGrid || viewMode === 'large-icons' || viewMode === 'small-icons';
-  const gridColumns = isMediaFolderGrid || viewMode === 'small-icons' ? 4 : 3;
+  const gridColumns =
+    explorer.activeDirectoryCategoryId === 'images' && viewMode === 'large-icons'
+      ? 2
+      : isMediaFolderGrid || viewMode === 'small-icons'
+        ? 4
+        : 3;
   const topMenuOffset = isSearchOpen ? 94 : 56;
   const isAppsView =
     explorer.mode === 'placeholder' && explorer.placeholderView?.kind === 'apps-info';
+  const isAppsGridView = isAppsView && (viewMode === 'large-icons' || viewMode === 'small-icons');
+  const appGridColumns = viewMode === 'large-icons' || windowWidth < 380 ? 2 : 4;
+  const isRecentFilesView =
+    explorer.mode === 'browser' && explorer.activeDirectoryCategoryId === 'recent';
 
   const sortedNodes = useMemo(() => sortNodes(explorer.nodes, sortModeId), [explorer.nodes, sortModeId]);
   const isDocumentsRootView =
@@ -438,10 +639,146 @@ export const ExplorerScreen = (): React.JSX.Element => {
     const normalizedQuery = debouncedSearchQuery.trim().toLocaleLowerCase('tr-TR');
     return sectionFilteredNodes.filter(node => node.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
   }, [debouncedSearchQuery, explorer.mode, searchResults, sectionFilteredNodes]);
+  const recentSections = useMemo(
+    () =>
+      groupRecentNodesByDay(
+        [...filteredNodes].sort(
+          (leftNode, rightNode) =>
+            new Date(rightNode.modifiedAt).getTime() -
+            new Date(leftNode.modifiedAt).getTime(),
+        ),
+      ),
+    [filteredNodes],
+  );
+  const selectedInstalledApp = useMemo(
+    () =>
+      selectedAppPackage
+        ? installedApps.find(app => app.packageName === selectedAppPackage) ?? null
+        : null,
+    [installedApps, selectedAppPackage],
+  );
+
+  const sortedInstalledApps = useMemo(() => {
+    const sorted = [...installedApps];
+    sorted.sort((leftApp, rightApp) => {
+      switch (sortModeId) {
+        case 'name-desc':
+          return rightApp.label.localeCompare(leftApp.label, 'tr');
+        case 'size-asc':
+          return leftApp.sizeBytes - rightApp.sizeBytes;
+        case 'size-desc':
+          return rightApp.sizeBytes - leftApp.sizeBytes;
+        case 'date-asc':
+          return new Date(leftApp.installedAt).getTime() - new Date(rightApp.installedAt).getTime();
+        case 'type-asc':
+          return leftApp.packageName.localeCompare(rightApp.packageName, 'tr');
+        case 'type-desc':
+          return rightApp.packageName.localeCompare(leftApp.packageName, 'tr');
+        case 'date-desc':
+          return new Date(rightApp.installedAt).getTime() - new Date(leftApp.installedAt).getTime();
+        case 'name-asc':
+        default:
+          return leftApp.label.localeCompare(rightApp.label, 'tr');
+      }
+    });
+    return sorted;
+  }, [installedApps, sortModeId]);
+
+  const refreshInstalledApps = useCallback(
+    async (options: {showLoading?: boolean} = {}) => {
+      try {
+        if (options.showLoading) {
+          setAppsLoading(true);
+        }
+
+        const applications = await localFileSystemBridge.listInstalledApps(false);
+        setInstalledApps(applications);
+        setSelectedAppPackage(currentPackage =>
+          currentPackage != null &&
+          applications.some(app => app.packageName === currentPackage)
+            ? currentPackage
+            : null,
+        );
+      } catch (error) {
+        setInteractionError(
+          error instanceof Error
+            ? error.message
+            : locale === 'en'
+              ? 'Applications could not be loaded.'
+              : 'Uygulamalar yüklenemedi.',
+        );
+      } finally {
+        if (options.showLoading) {
+          setAppsLoading(false);
+        }
+      }
+    },
+    [locale],
+  );
+
+  const refreshStorageStats = useCallback(async () => {
+    try {
+      setStorageStats(await localFileSystemBridge.getStorageStats());
+    } catch {
+      setStorageStats(null);
+    }
+  }, []);
 
   const homeStorageItems = useMemo(() => {
-    const internalStorageCard = storageCards[0];
-    const fixedStorageCards = storageCards.slice(1);
+    const internalStorageCard = storageCards[0]
+      ? {
+          ...storageCards[0],
+          ...(locale === 'en'
+            ? {
+                title: 'Internal Storage',
+                subtitle: 'Primary device storage',
+              }
+            : {}),
+          ...(storageStats
+            ? {
+                usedLabel: formatBytes(storageStats.usedBytes),
+                totalLabel: formatBytes(storageStats.totalBytes),
+                usageRatio:
+                  storageStats.totalBytes > 0
+                    ? storageStats.usedBytes / storageStats.totalBytes
+                    : 0,
+              }
+            : {}),
+        }
+      : null;
+    const fixedStorageCards = storageCards.slice(1).map(item =>
+      locale === 'en'
+        ? {
+            ...item,
+            title:
+              item.id === 'system'
+                ? 'System Files'
+                : item.id === 'downloads'
+                  ? 'Downloads'
+                  : item.title,
+            subtitle:
+              item.id === 'system'
+                ? 'Protected Android areas'
+                : item.id === 'downloads'
+                  ? 'Downloaded files'
+                  : item.subtitle,
+            usedLabel:
+              item.id === 'downloads' && storageStats
+                ? formatBytes(storageStats.downloadsSizeBytes)
+                : item.usedLabel,
+            totalLabel:
+              item.id === 'downloads' && storageStats ? 'folder' : item.totalLabel,
+          }
+        : {
+            ...item,
+            usedLabel:
+              item.id === 'downloads' && storageStats
+                ? formatBytes(storageStats.downloadsSizeBytes)
+                : item.usedLabel,
+            totalLabel:
+              item.id === 'downloads' && storageStats ? 'klasörü' : item.totalLabel,
+          },
+    );
     const resolvedStorageCards: ExplorerStorageCardItem[] = [
       ...(internalStorageCard ? [internalStorageCard] : []),
       ...(sdRoots.length > 0
@@ -450,8 +787,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
               id: 'sd-card' as const,
               title: 'SD kart',
               subtitle: 'Harici depolama',
-              usedLabel: 'Bağlı',
-              totalLabel: 'hazır',
+              usedLabel: locale === 'en' ? 'Ready' : 'Bağlı',
+              totalLabel: locale === 'en' ? 'available' : 'hazır',
               usageRatio: 1,
               icon: 'sd-card' as const,
               isActive: true,
@@ -464,8 +801,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
               id: 'usb' as const,
               title: 'USB',
               subtitle: 'OTG depolama',
-              usedLabel: 'Bağlı',
-              totalLabel: 'hazır',
+              usedLabel: locale === 'en' ? 'Ready' : 'Bağlı',
+              totalLabel: locale === 'en' ? 'available' : 'hazır',
               usageRatio: 1,
               icon: 'usb' as const,
               isActive: true,
@@ -483,16 +820,57 @@ export const ExplorerScreen = (): React.JSX.Element => {
     return resolvedStorageCards.filter(item =>
       item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery),
     );
-  }, [explorer.mode, sdRoots.length, searchQuery, usbRoots.length]);
+  }, [explorer.mode, locale, sdRoots.length, searchQuery, storageStats, usbRoots.length]);
 
   const homeShortcutItems = useMemo(() => {
+    const localizedShortcuts =
+      locale === 'en'
+        ? homeShortcuts.map(item => ({
+            ...item,
+            title:
+              (
+                {
+                  images: 'Images',
+                  audio: 'Audio',
+                  video: 'Videos',
+                  documents: 'Documents',
+                  apps: 'Applications',
+                  recent: 'Recent Files',
+                  cloud: 'Cloud',
+                  network: 'PC Access',
+                  whatsapp: 'WhatsApp',
+                  telegram: 'Telegram',
+                  instagram: 'Instagram',
+                } as Record<string, string>
+              )[item.id] ?? item.title,
+            subtitle:
+              (
+                {
+                  images: 'Photos and screenshots',
+                  audio: 'Music and recordings',
+                  video: 'Movies and clips',
+                  documents: 'PDF, DOCX and work files',
+                  apps: 'APK and installed packages',
+                  recent: 'Recently added content',
+                  cloud: 'Connected accounts and providers',
+                  network: 'LAN sharing and desktop access',
+                  whatsapp: 'WhatsApp media and files',
+                  telegram: 'Telegram media and files',
+                  instagram: 'Instagram media folders',
+                } as Record<string, string>
+              )[item.id] ?? item.subtitle,
+          }))
+        : homeShortcuts;
+
     if (!searchQuery.trim() || explorer.mode !== 'home') {
-      return homeShortcuts;
+      return localizedShortcuts;
     }
 
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
-    return homeShortcuts.filter(item => item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
-  }, [explorer.mode, searchQuery]);
+    return localizedShortcuts.filter(item =>
+      item.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery),
+    );
+  }, [explorer.mode, locale, searchQuery]);
 
   const selectedNodes = useMemo(
     () => explorer.nodes.filter(node => selectedIdSet.has(node.id)),
@@ -556,49 +934,30 @@ export const ExplorerScreen = (): React.JSX.Element => {
   useFocusEffect(
     useCallback(() => {
       void refreshRemovableStorageRoots();
-    }, [refreshRemovableStorageRoots]),
+      void refreshStorageStats();
+    }, [refreshRemovableStorageRoots, refreshStorageStats]),
   );
 
   useEffect(() => {
-    let isActive = true;
-
     if (!isAppsView) {
       setInstalledApps([]);
       setSelectedAppPackage(null);
       return;
     }
 
-    const loadApps = async () => {
-      try {
-        setAppsLoading(true);
-        const applications = await localFileSystemBridge.listInstalledApps(false);
+    void refreshInstalledApps({showLoading: true});
+  }, [isAppsView, refreshInstalledApps]);
 
-        if (!isActive) {
-          return;
-        }
-
-        setInstalledApps(applications);
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-
-        setInteractionError(
-          error instanceof Error ? error.message : 'Uygulamalar yüklenemedi.',
-        );
-      } finally {
-        if (isActive) {
-          setAppsLoading(false);
-        }
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAppsView) {
+        return undefined;
       }
-    };
 
-    void loadApps();
-
-    return () => {
-      isActive = false;
-    };
-  }, [isAppsView]);
+      void refreshInstalledApps();
+      return undefined;
+    }, [isAppsView, refreshInstalledApps]),
+  );
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -735,18 +1094,44 @@ export const ExplorerScreen = (): React.JSX.Element => {
           return true;
         }
 
+        if (explorer.selectedNodeIds.length > 0) {
+          explorer.clearSelection();
+          return true;
+        }
+
+        if (selectedAppPackage) {
+          setSelectedAppPackage(null);
+          return true;
+        }
+
+        if (socialExplorer?.groupId != null) {
+          setSocialExplorer(currentState =>
+            currentState
+              ? {
+                  ...currentState,
+                  accountId: 'default',
+                  groupId: null,
+                  groupLabel: null,
+                  nodes: [],
+                  isLoading: false,
+                }
+              : currentState,
+          );
+          return true;
+        }
+
         if (explorer.mode !== 'home') {
           explorer.goBack();
           return true;
         }
 
-        Alert.alert('Çıkış', 'Uygulamadan çıkmak istediğinize emin misiniz?', [
+        Alert.alert(t('explorer.exitTitle'), t('explorer.exitMessage'), [
           {
-            text: 'İptal',
+            text: t('common.cancel'),
             style: 'cancel',
           },
           {
-            text: 'Çıkış',
+            text: t('explorer.exitConfirm'),
             style: 'destructive',
             onPress: () => {
               void localFileSystemBridge
@@ -762,12 +1147,16 @@ export const ExplorerScreen = (): React.JSX.Element => {
       return () => subscription.remove();
     }, [
       documentSectionFilter,
+      explorer.clearSelection,
       explorer.goBack,
       explorer.mode,
+      explorer.selectedNodeIds.length,
       isDrawerOpen,
       isMoreMenuOpen,
       isSearchOpen,
       isSortMenuOpen,
+      selectedAppPackage,
+      socialExplorer?.groupId,
     ]),
   );
 
@@ -810,8 +1199,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
     (entryId: ExplorerExtendedHomeEntryId) => {
       setDrawerOpen(false);
       setInteractionError(null);
+      const logicalRootLabel =
+        homeShortcuts.find(item => item.id === entryId)?.title ??
+        storageCards.find(item => item.id === entryId)?.title ??
+        null;
 
       try {
+        setSocialExplorer(null);
         if (entryId === 'images' || entryId === 'video') {
           setViewMode('details');
         } else {
@@ -829,7 +1223,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
                   'Takılı SD kartta henüz görüntülenecek içerik bulunmuyor.',
                 icon: 'sd-card',
               },
-            });
+              logicalRootPath: sdRoot,
+              logicalRootLabel: logicalRootLabel ?? 'SD kart',
+            }, {resetHistory: true});
             return;
           }
 
@@ -853,7 +1249,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
                   'Bağlı USB depolamada henüz görüntülenecek içerik bulunmuyor.',
                 icon: 'storage',
               },
-            });
+              logicalRootPath: usbRoot,
+              logicalRootLabel: logicalRootLabel ?? 'USB',
+            }, {resetHistory: true});
             return;
           }
 
@@ -866,12 +1264,34 @@ export const ExplorerScreen = (): React.JSX.Element => {
           return;
         }
 
+        if (
+          entryId === 'whatsapp' ||
+          entryId === 'telegram' ||
+          entryId === 'instagram'
+        ) {
+          const action = resolveExplorerCategoryAction(entryId);
+          setSocialExplorer({
+            appId: entryId,
+            accountId: 'default',
+            groupId: null,
+            groupLabel: null,
+            nodes: [],
+            isLoading: false,
+          });
+          if (action.kind === 'placeholder') {
+            explorer.openPlaceholderView(action.placeholder);
+          }
+          return;
+        }
+
         const action = resolveExplorerCategoryAction(entryId);
         if (action.kind === 'directory') {
           explorer.openBrowserPath(action.path, {
             categoryId: action.categoryId,
             emptyState: action.emptyState,
-          });
+            logicalRootPath: action.path,
+            logicalRootLabel: logicalRootLabel ?? action.categoryId,
+          }, {resetHistory: true});
           return;
         }
 
@@ -898,7 +1318,14 @@ export const ExplorerScreen = (): React.JSX.Element => {
         explorer.openBrowserPath(action.path, {
           categoryId: action.categoryId,
           emptyState: action.emptyState,
-        });
+          logicalRootPath: action.path,
+          logicalRootLabel:
+            locationId === 'internal-storage'
+              ? locale === 'en'
+                ? 'Internal storage'
+                : 'Ana bellek'
+              : action.categoryId,
+        }, {resetHistory: true});
         return;
       }
 
@@ -1043,15 +1470,18 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
     try {
       for (const node of selectedNodes) {
-        if (!node.name.startsWith('.')) {
-          await localFileSystemBridge.renameEntry(node.path, `.${node.name}`);
+        const nextName = node.name.startsWith('.')
+          ? node.name.replace(/^\.+/, '')
+          : `.${node.name}`;
+        if (nextName && nextName !== node.name) {
+          await localFileSystemBridge.renameEntry(node.path, nextName);
         }
       }
 
       explorer.clearSelection();
       explorer.requestReload();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Öğeler gizlenemedi.';
+      const message = error instanceof Error ? error.message : 'Göster/Gizle işlemi tamamlanamadı.';
       Alert.alert('İşlem tamamlanamadı', message);
     }
   }, [explorer, selectedNodes]);
@@ -1165,14 +1595,41 @@ export const ExplorerScreen = (): React.JSX.Element => {
       return;
     }
 
+    const selectedApp =
+      installedApps.find(app => app.packageName === selectedAppPackage) ?? null;
+
+    if (selectedApp?.canUninstall === false) {
+      Alert.alert(
+        locale === 'en' ? 'Removal unavailable' : 'Kaldırma kullanılamıyor',
+        locale === 'en'
+          ? 'This application cannot be removed from Android uninstall flow.'
+          : 'Bu uygulama Android kaldırma akışıyla kaldırılamaz.',
+      );
+      return;
+    }
+
     try {
-      await localFileSystemBridge.uninstallPackage(selectedAppPackage);
+      const result = await localFileSystemBridge.uninstallPackage(selectedAppPackage);
+      setSelectedAppPackage(null);
+
+      if (result.status === 'uninstalled') {
+        await refreshInstalledApps();
+      } else {
+        await refreshInstalledApps();
+      }
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Uygulama kaldırma ekranı açılamadı.';
-      Alert.alert('Kaldırma başarısız', message);
+        error instanceof Error
+          ? error.message
+          : locale === 'en'
+            ? 'The uninstall screen could not be opened.'
+            : 'Uygulama kaldırma ekranı açılamadı.';
+      Alert.alert(
+        locale === 'en' ? 'Removal failed' : 'Kaldırma başarısız',
+        message,
+      );
     }
-  }, [selectedAppPackage]);
+  }, [installedApps, locale, refreshInstalledApps, selectedAppPackage]);
 
   const handleRestoreSelection = useCallback(async () => {
     if (!isTrashView || selectedNodes.length === 0) {
@@ -1205,6 +1662,25 @@ export const ExplorerScreen = (): React.JSX.Element => {
     }
   }, [explorer, findTrashEntry, isTrashView, removeTrashEntry, selectedNodes]);
 
+  const handleEmptyTrash = useCallback(async () => {
+    if (!isTrashView || explorer.nodes.length === 0) {
+      return;
+    }
+
+    try {
+      for (const node of explorer.nodes) {
+        await localFileSystemBridge.deleteEntry(node.path);
+        removeTrashEntry(node.path);
+      }
+      explorer.clearSelection();
+      explorer.requestReload();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Çöp kutusu boşaltılamadı.';
+      Alert.alert('Boşaltma başarısız', message);
+    }
+  }, [explorer, isTrashView, removeTrashEntry]);
+
   const confirmDeleteSelection = useCallback(async () => {
     if (selectedNodes.length === 0) {
       setDeleteConfirmVisible(false);
@@ -1212,7 +1688,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
     }
 
     try {
-      if (deletePermanently) {
+      if (isTrashView || deletePermanently) {
         for (const node of selectedNodes) {
           await localFileSystemBridge.deleteEntry(node.path);
           removeTrashEntry(node.path);
@@ -1240,7 +1716,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
       setDeleteConfirmVisible(false);
       setDeletePermanently(false);
     }
-  }, [deletePermanently, explorer, removeFavoriteItem, removeTrashEntry, selectedNodes, upsertTrashEntry]);
+  }, [deletePermanently, explorer, isTrashView, removeFavoriteItem, removeTrashEntry, selectedNodes, upsertTrashEntry]);
 
   const handlePrimarySelectionAction = useCallback(() => {
     if (isTrashView) {
@@ -1258,20 +1734,23 @@ export const ExplorerScreen = (): React.JSX.Element => {
       explorer.requestReload();
     }
     if (explorer.mode === 'home') {
-      void refreshRemovableStorageRoots().finally(() => setRefreshing(false));
+      void Promise.all([refreshRemovableStorageRoots(), refreshStorageStats()]).finally(
+        () => setRefreshing(false),
+      );
     }
     if (isAppsView) {
-      setAppsLoading(true);
-      void localFileSystemBridge
-        .listInstalledApps(false)
-        .then(applications => setInstalledApps(applications))
-        .finally(() => {
-          setAppsLoading(false);
-          setRefreshing(false);
-        });
+      void refreshInstalledApps({showLoading: true}).finally(() =>
+        setRefreshing(false),
+      );
     }
     setMoreMenuOpen(false);
-  }, [explorer, isAppsView, refreshRemovableStorageRoots]);
+  }, [
+    explorer,
+    isAppsView,
+    refreshInstalledApps,
+    refreshRemovableStorageRoots,
+    refreshStorageStats,
+  ]);
 
   const handleToggleHiddenFiles = useCallback(() => {
     setShowHiddenFiles(!showHiddenFiles);
@@ -1331,25 +1810,15 @@ export const ExplorerScreen = (): React.JSX.Element => {
     }
 
     const buildDirectoryBreadcrumbs = (path: string) => {
-      const categoryAction =
-        explorer.activeDirectoryCategoryId != null
-          ? resolveExplorerCategoryAction(explorer.activeDirectoryCategoryId)
-          : null;
-      const categoryRootPath =
-        categoryAction?.kind === 'directory' && categoryAction.path !== ROOT_DIRECTORY
-          ? categoryAction.path
-          : null;
+      const logicalRootPath = explorer.logicalRootPath;
+      const logicalRootLabel = explorer.logicalRootLabel;
 
-      if (categoryRootPath && path.startsWith(categoryRootPath)) {
-        const rootRelativeSegments = getPathSegments(categoryRootPath);
-        const rootLabel = getDisplayLabelForSegment(
-          rootRelativeSegments.at(-1) ?? 'Ana bellek',
-        );
-        const items: BreadcrumbItem[] = [{label: rootLabel, path: categoryRootPath}];
+      if (logicalRootPath && logicalRootLabel && path.startsWith(logicalRootPath)) {
+        const items: BreadcrumbItem[] = [{label: logicalRootLabel, path: logicalRootPath}];
         const currentSegments = path.split('/').filter(Boolean);
-        const rootSegments = categoryRootPath.split('/').filter(Boolean);
+        const rootSegments = logicalRootPath.split('/').filter(Boolean);
         const nestedSegments = currentSegments.slice(rootSegments.length);
-        let currentSegmentPath = categoryRootPath;
+        let currentSegmentPath = logicalRootPath;
 
         nestedSegments.forEach(segment => {
           currentSegmentPath = `${currentSegmentPath}/${segment}`;
@@ -1401,8 +1870,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
     return [];
   }, [
-    explorer.activeDirectoryCategoryId,
     explorer.currentPath,
+    explorer.logicalRootLabel,
+    explorer.logicalRootPath,
     explorer.mode,
     explorer.placeholderView,
     explorer.previewNode,
@@ -1410,13 +1880,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
 
   const headerTitle = useMemo(() => {
     if (explorer.mode === 'home') {
-      return 'Dosya Yöneticisi';
+      return t('app.title');
     }
     if (documentSectionFilter != null) {
-      return documentSections.find(section => section.id === documentSectionFilter)?.title ?? 'Belgeler';
+      return getDocumentSectionTitle(documentSectionFilter);
     }
-    return currentBreadcrumbs.at(-1)?.label ?? 'Dosya Yöneticisi';
-  }, [currentBreadcrumbs, documentSectionFilter, explorer.mode]);
+    return currentBreadcrumbs.at(-1)?.label ?? t('app.title');
+  }, [currentBreadcrumbs, documentSectionFilter, explorer.mode, getDocumentSectionTitle, t]);
 
   const handlePressBreadcrumbSegment = useCallback(
     (index: number) => {
@@ -1428,13 +1898,15 @@ export const ExplorerScreen = (): React.JSX.Element => {
       explorer.openBrowserPath(target.path, {
         categoryId: explorer.activeDirectoryCategoryId,
         emptyState: explorer.activeEmptyState,
-      });
+        logicalRootPath: explorer.logicalRootPath,
+        logicalRootLabel: explorer.logicalRootLabel,
+      }, {resetHistory: true});
     },
     [currentBreadcrumbs, explorer],
   );
 
   const searchPlaceholder =
-    explorer.mode === 'home' ? 'Dosya ara' : 'Bu klasör ve alt klasörlerde ara';
+    explorer.mode === 'home' ? t('explorer.searchHome') : t('explorer.searchFolder');
 
   const handleVisibleNodePress = useCallback(
     (node: FileSystemNode) => {
@@ -1452,6 +1924,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
           explorer.openBrowserPath(targetPath, {
             categoryId: explorer.activeDirectoryCategoryId,
             emptyState: explorer.activeEmptyState,
+            logicalRootPath: explorer.logicalRootPath,
+            logicalRootLabel: explorer.logicalRootLabel,
           });
           return;
         }
@@ -1460,6 +1934,86 @@ export const ExplorerScreen = (): React.JSX.Element => {
       void explorer.openNode(node);
     },
     [explorer, searchQuery],
+  );
+
+  const loadSocialGroup = useCallback(
+    async (group: SocialGroupDescriptor) => {
+      if (!socialExplorer) {
+        return;
+      }
+
+      const appId = socialExplorer.appId;
+      setSocialExplorer(currentState =>
+        currentState
+          ? {
+              ...currentState,
+              accountId: group.accountId,
+              groupId: group.id,
+              groupLabel: getSocialGroupLabel(group.id),
+              nodes: [],
+              isLoading: true,
+            }
+          : currentState,
+      );
+
+      try {
+        const uniquePaths = new Set<string>();
+        const socialNodes = await localFileSystemBridge.listSocialMediaFiles(
+          appId,
+          group.accountId,
+          group.id,
+          showHiddenFiles,
+          0,
+        );
+        const nextNodes = socialNodes
+          .filter(node => {
+            if (uniquePaths.has(node.path)) {
+              return false;
+            }
+            uniquePaths.add(node.path);
+            return true;
+          })
+          .sort(
+            (leftNode, rightNode) =>
+              new Date(rightNode.modifiedAt).getTime() -
+              new Date(leftNode.modifiedAt).getTime(),
+          );
+
+        setSocialExplorer(currentState =>
+          currentState
+            ? {
+                ...currentState,
+                accountId: group.accountId,
+                groupId: group.id,
+                groupLabel: getSocialGroupLabel(group.id),
+                nodes: nextNodes,
+                isLoading: false,
+              }
+            : currentState,
+        );
+      } catch (error) {
+        setInteractionError(
+          error instanceof Error
+            ? error.message
+            : locale === 'en'
+              ? 'Social folder content could not be loaded.'
+              : 'Sosyal klasör içerikleri yüklenemedi.',
+        );
+        setSocialExplorer(currentState =>
+          currentState
+            ? {
+                ...currentState,
+                accountId: group.accountId,
+                groupId: group.id,
+                groupLabel: getSocialGroupLabel(group.id),
+                nodes: [],
+                isLoading: false,
+              }
+            : currentState,
+        );
+      }
+    },
+    [getSocialGroupLabel, locale, showHiddenFiles, socialExplorer],
   );
 
   const contentBottomInset =
@@ -1472,13 +2026,14 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const renderListItem = useCallback(
     ({item}: {item: FileSystemNode}) => {
       const trashEntry = isTrashView ? trashEntries.find(entry => entry.trashPath === item.path) : undefined;
-      const daysLeft = trashEntry ? getTrashDaysLeft(trashEntry.deletedAt) : null;
       const trashLeftMeta =
-        trashEntry && daysLeft != null
-          ? `${item.kind === 'file' ? formatBytes(item.sizeBytes).toLowerCase() : `${item.childCount ?? 0} öğe`}  •  ${daysLeft} gün kaldı`
+        trashEntry
+          ? item.kind === 'file'
+            ? formatBytes(item.sizeBytes).toLowerCase()
+            : `${item.childCount ?? 0} öğe`
           : undefined;
       const trashRightMeta = trashEntry
-        ? `Silinme tarihi: ${formatAbsoluteDate(trashEntry.deletedAt)}`
+        ? formatAbsoluteDate(trashEntry.deletedAt)
         : undefined;
 
       return (
@@ -1487,7 +2042,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
           node={item}
           onLongPress={explorer.toggleSelection}
           onPress={handleVisibleNodePress}
-          rightMetaOverride={trashRightMeta ?? formatAbsoluteDate(item.modifiedAt)}
+          {...(trashRightMeta ? {rightMetaOverride: trashRightMeta} : {})}
           selected={selectedIdSet.has(item.id)}
           {...(trashLeftMeta
             ? {leftMetaOverride: trashLeftMeta}
@@ -1501,6 +2056,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const renderGridItem = useCallback(
     ({item}: {item: FileSystemNode}) => {
       const isDirectory = item.kind === 'directory';
+      const isLargeImageGrid =
+        explorer.activeDirectoryCategoryId === 'images' &&
+        viewMode === 'large-icons';
       const shouldShowPreview =
         (viewMode === 'large-icons' || isMediaFolderGrid) && isImageNode(item);
       const shouldShowVideoPreview =
@@ -1512,7 +2070,12 @@ export const ExplorerScreen = (): React.JSX.Element => {
           onPress={() => handleVisibleNodePress(item)}
           style={({pressed}) => ({
             flex: 1,
-            minHeight: isMediaFolderGrid || viewMode === 'large-icons' ? 118 : 96,
+            aspectRatio: isLargeImageGrid ? 1 : undefined,
+            minHeight: isLargeImageGrid
+              ? undefined
+              : isMediaFolderGrid || viewMode === 'large-icons'
+                ? 118
+                : 96,
             backgroundColor: selectedIdSet.has(item.id) ? theme.colors.primaryMuted : theme.colors.surface,
             alignItems: 'center',
             justifyContent: 'center',
@@ -1531,6 +2094,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                 style={{
                   width: isMediaFolderGrid ? 52 : viewMode === 'large-icons' ? 34 : 24,
                   height: isMediaFolderGrid ? 52 : viewMode === 'large-icons' ? 34 : 24,
+                  ...(isLargeImageGrid ? {width: 92, height: 92} : {}),
                 }}
               />
             ) : shouldShowVideoPreview ? (
@@ -1600,7 +2164,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                   justifyContent: 'space-between',
                 }}>
                 <AppText style={{fontSize: theme.typography.body}} weight="semibold">
-                  {section.title}
+                  {getDocumentSectionTitle(section.id)}
                 </AppText>
                 <Pressable
                   disabled={sectionNodes.length === 0}
@@ -1609,7 +2173,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                   <AppText
                     tone={sectionNodes.length === 0 ? 'muted' : 'default'}
                     style={{fontSize: theme.typography.caption}}>
-                    &gt; Tümü
+                    {locale === 'en' ? '> All' : '> Tümü'}
                   </AppText>
                 </Pressable>
               </View>
@@ -1628,9 +2192,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
                 </View>
               ) : (
                 <EmptyState
-                  description="Bu türde belge bulunamadı."
+                  description={
+                    locale === 'en'
+                      ? 'No documents were found in this category.'
+                      : 'Bu türde belge bulunamadı.'
+                  }
                   icon="documents"
-                  title="Liste boş"
+                  title={locale === 'en' ? 'List is empty' : 'Liste boş'}
                 />
               )}
             </View>
@@ -1642,18 +2210,174 @@ export const ExplorerScreen = (): React.JSX.Element => {
       contentBottomInset,
       documentSectionGroups,
       explorer.toggleSelection,
+      getDocumentSectionTitle,
       handleRefreshCurrent,
       handleVisibleNodePress,
       isRefreshing,
+      locale,
       selectedIdSet,
       theme,
     ],
   );
 
+  const renderSocialExplorer = useCallback(() => {
+    if (!socialExplorer) {
+      return null;
+    }
+
+    if (socialExplorer.groupId == null) {
+      const sections = socialSectionsByApp[socialExplorer.appId];
+
+      return (
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: theme.spacing.md,
+            paddingTop: theme.spacing.md,
+            paddingBottom: contentBottomInset,
+            gap: theme.spacing.md,
+          }}
+          showsVerticalScrollIndicator={false}>
+          <View>
+            <AppText style={{fontSize: theme.typography.title}} weight="bold">
+              {getSocialAppLabel(socialExplorer.appId)}
+            </AppText>
+            <AppText tone="muted" style={{marginTop: theme.spacing.xs}}>
+              {locale === 'en'
+                ? 'Content is grouped by media type.'
+                : 'İçerikleri türe göre gruplanır.'}
+            </AppText>
+          </View>
+          {sections.map(section => (
+            <View key={section.id} style={{gap: theme.spacing.sm}}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.spacing.md,
+                }}>
+                <AppText style={{fontSize: theme.typography.body}} weight="semibold">
+                  {getSocialSectionTitle(section.id)}
+                </AppText>
+                <View style={{height: 1, flex: 1, backgroundColor: theme.colors.border}} />
+              </View>
+              {section.groups.map(group => (
+                <Pressable
+                  key={`${group.accountId}-${group.id}`}
+                  onPress={() => {
+                    void loadSocialGroup(group);
+                  }}
+                  style={({pressed}) => ({
+                    opacity: pressed ? 0.82 : 1,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                    paddingHorizontal: theme.spacing.lg,
+                    paddingVertical: theme.spacing.md,
+                  })}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md}}>
+                      {group.id === 'documents' ? (
+                        <FileText color={theme.colors.primary} size={20} />
+                      ) : group.id === 'images' ? (
+                        <ImageIcon color={theme.colors.primary} size={20} />
+                      ) : group.id === 'audio' || group.id === 'music' || group.id === 'voice' ? (
+                        <HardDrive color={theme.colors.primary} size={20} />
+                      ) : group.id === 'video' ? (
+                        <VideoIcon color={theme.colors.primary} size={20} />
+                      ) : (
+                        <Folder color={theme.colors.primary} size={20} />
+                      )}
+                      <AppText weight="semibold">{getSocialGroupLabel(group.id)}</AppText>
+                    </View>
+                    <AppText tone="muted">{t('common.open')}</AppText>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      );
+    }
+
+    return (
+      <FlatList
+        contentContainerStyle={{
+          paddingHorizontal: theme.spacing.md,
+          paddingTop: theme.spacing.md,
+          paddingBottom: contentBottomInset,
+          flexGrow: 1,
+        }}
+        data={socialExplorer.nodes}
+        keyExtractor={item => item.id}
+        ListHeaderComponent={
+          <View style={{marginBottom: theme.spacing.md}}>
+            <AppText style={{fontSize: theme.typography.title}} weight="bold">
+              {getSocialAppLabel(socialExplorer.appId)} -{' '}
+              {socialExplorer.groupLabel ??
+                getSocialGroupLabel(socialExplorer.groupId)}
+            </AppText>
+          </View>
+        }
+        ListEmptyComponent={
+          socialExplorer.isLoading ? (
+            <View style={{paddingVertical: theme.spacing.xxl}}>
+              <ActivityIndicator color={theme.colors.primary} />
+            </View>
+          ) : (
+            <EmptyState
+              description={
+                locale === 'en'
+                  ? 'No matching files were found in this group.'
+                  : 'Bu grupta ilgili dosya bulunamadı.'
+              }
+              icon="folder"
+              title={locale === 'en' ? 'List is empty' : 'Liste boş'}
+            />
+          )
+        }
+        renderItem={({item}) => (
+          <FileListItem
+            density={viewMode === 'compact' ? 'compact' : 'details'}
+            node={item}
+            onLongPress={explorer.toggleSelection}
+            onPress={handleVisibleNodePress}
+            selected={selectedIdSet.has(item.id)}
+          />
+        )}
+        ItemSeparatorComponent={() => <View style={{height: theme.spacing.sm}} />}
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  }, [
+    contentBottomInset,
+    explorer.toggleSelection,
+    getSocialAppLabel,
+    getSocialGroupLabel,
+    getSocialSectionTitle,
+    handleVisibleNodePress,
+    locale,
+    loadSocialGroup,
+    selectedIdSet,
+    socialExplorer,
+    theme,
+    t,
+    viewMode,
+  ]);
+
   const renderInstalledAppItem = useCallback(
     ({item}: {item: InstalledAppItem}) => (
       <Pressable
         delayLongPress={220}
+        onPress={() =>
+          setSelectedAppPackage(currentPackage =>
+            currentPackage === item.packageName ? null : item.packageName,
+          )
+        }
         onLongPress={() => setSelectedAppPackage(item.packageName)}
         style={({pressed}) => ({
           flexDirection: 'row',
@@ -1698,9 +2422,73 @@ export const ExplorerScreen = (): React.JSX.Element => {
             {formatBytes(item.sizeBytes).toLowerCase()}
           </AppText>
         </View>
+        <View style={{alignItems: 'flex-end', gap: theme.spacing.xs}}>
+          <Download color={theme.colors.textMuted} size={14} />
+          <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+            {formatAbsoluteDate(item.installedAt)}
+          </AppText>
+        </View>
       </Pressable>
     ),
     [selectedAppPackage, theme],
+  );
+
+  const renderInstalledAppGridItem = useCallback(
+    ({item}: {item: InstalledAppItem}) => (
+      <Pressable
+        onPress={() =>
+          setSelectedAppPackage(currentPackage =>
+            currentPackage === item.packageName ? null : item.packageName,
+          )
+        }
+        onLongPress={() => setSelectedAppPackage(item.packageName)}
+        style={({pressed}) => ({
+          flex: 1,
+          minHeight: viewMode === 'large-icons' ? 156 : 116,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor:
+            selectedAppPackage === item.packageName
+              ? theme.colors.primaryMuted
+              : theme.colors.surface,
+          padding: theme.spacing.sm,
+          opacity: pressed ? 0.82 : 1,
+        })}>
+        {item.iconBase64 ? (
+          <Image
+            source={{uri: `data:image/png;base64,${item.iconBase64}`}}
+            style={{
+              width: viewMode === 'large-icons' ? 58 : 38,
+              height: viewMode === 'large-icons' ? 58 : 38,
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: viewMode === 'large-icons' ? 58 : 38,
+              height: viewMode === 'large-icons' ? 58 : 38,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: theme.colors.surfaceMuted,
+            }}>
+            <AppText>{item.label.slice(0, 1)}</AppText>
+          </View>
+        )}
+        <AppText
+          numberOfLines={2}
+          style={{
+            marginTop: theme.spacing.sm,
+            textAlign: 'center',
+            fontSize: theme.typography.caption,
+          }}>
+          {item.label}
+        </AppText>
+        <AppText tone="muted" style={{marginTop: theme.spacing.xs, fontSize: theme.typography.caption - 1}}>
+          {formatAbsoluteDate(item.installedAt)}
+        </AppText>
+      </Pressable>
+    ),
+    [selectedAppPackage, theme, viewMode],
   );
 
   const emptyComponent = useMemo(() => {
@@ -1716,18 +2504,30 @@ export const ExplorerScreen = (): React.JSX.Element => {
         <EmptyState
           description={explorer.errorMessage}
           icon={explorer.activeEmptyState?.icon ?? genericDirectoryEmptyState.icon}
-          supportingText="Farklı bir klasöre geçebilir veya depolama erişim iznini kontrol edebilirsiniz."
-          title="Klasör açılamadı"
+          supportingText={
+            locale === 'en'
+              ? 'Try another folder or check the storage permission.'
+              : 'Farklı bir klasöre geçebilir veya depolama erişim iznini kontrol edebilirsiniz.'
+          }
+          title={locale === 'en' ? 'Folder unavailable' : 'Klasör açılamadı'}
         />
       );
     }
     if (searchQuery.trim()) {
       return (
         <EmptyState
-          description="Arama ölçütünü değiştirmeyi deneyebilirsiniz."
+          description={
+            locale === 'en'
+              ? 'Try changing the search criteria.'
+              : 'Arama ölçütünü değiştirmeyi deneyebilirsiniz.'
+          }
           icon="folder"
-          supportingText="Bu konum ve alt klasörlerde aradığınız adla eşleşen öğe bulunamadı."
-          title="Sonuç bulunamadı"
+          supportingText={
+            locale === 'en'
+              ? 'No matching items were found in this location or its subfolders.'
+              : 'Bu konum ve alt klasörlerde aradığınız adla eşleşen öğe bulunamadı.'
+          }
+          title={locale === 'en' ? 'No results found' : 'Sonuç bulunamadı'}
         />
       );
     }
@@ -1735,10 +2535,26 @@ export const ExplorerScreen = (): React.JSX.Element => {
     const emptyState = explorer.activeEmptyState ?? genericDirectoryEmptyState;
     return (
       <EmptyState
-        description={emptyState.description}
+        description={
+          explorer.activeEmptyState
+            ? emptyState.description
+            : locale === 'en'
+              ? 'This location is empty right now. You can switch to another folder or create a new file.'
+              : emptyState.description
+        }
         icon={emptyState.icon}
-        supportingText="Bu klasöre yeni içerik eklendiğinde burada görünür."
-        title={emptyState.title}
+        supportingText={
+          locale === 'en'
+            ? 'New content will appear here when it is added to this folder.'
+            : 'Bu klasöre yeni içerik eklendiğinde burada görünür.'
+        }
+        title={
+          explorer.activeEmptyState
+            ? emptyState.title
+            : locale === 'en'
+              ? 'This folder does not have content yet'
+              : emptyState.title
+        }
       />
     );
   }, [
@@ -1747,6 +2563,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
     explorer.isLoading,
     isSearchLoading,
     searchQuery,
+    locale,
+    t,
     theme.colors.primary,
     theme.spacing.xxl,
   ]);
@@ -1760,6 +2578,23 @@ export const ExplorerScreen = (): React.JSX.Element => {
       }}
       onChangeSearchQuery={setSearchQuery}
       onOpenDrawer={openDrawer}
+      {...(explorer.mode !== 'home' ||
+      explorer.selectedNodeIds.length > 0 ||
+      selectedAppPackage != null
+        ? {
+            onNavigateBack: () => {
+              if (explorer.selectedNodeIds.length > 0) {
+                explorer.clearSelection();
+                return;
+              }
+              if (selectedAppPackage) {
+                setSelectedAppPackage(null);
+                return;
+              }
+              explorer.goBack();
+            },
+          }
+        : {})}
       onPressSegment={handlePressBreadcrumbSegment}
       onToggleMoreMenu={toggleMoreMenu}
       onToggleSearch={toggleSearch}
@@ -1776,7 +2611,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
   const topStatusArea = (
     <>
       {interactionError ? <InlineError message={interactionError} /> : null}
-      {storageAccessStatus === 'missing' ? <StorageAccessPrompt onGrantAccess={requestStorageAccess} /> : null}
+      {storageAccessStatus === 'missing' && explorer.mode !== 'home' ? (
+        <StorageAccessPrompt onGrantAccess={requestStorageAccess} />
+      ) : null}
     </>
   );
 
@@ -1788,7 +2625,14 @@ export const ExplorerScreen = (): React.JSX.Element => {
         isTrashView={isTrashView}
         onAddFavorite={handleAddSelectionToFavorites}
         onCopy={handleCopySelection}
-        onDelete={handleDeleteSelection}
+        onDelete={() => {
+          if (isTrashView) {
+            void confirmDeleteSelection();
+            return;
+          }
+          handleDeleteSelection();
+        }}
+        onEmptyTrash={handleEmptyTrash}
         onExtractArchive={handleExtractSelectedArchive}
         onGoToFolder={handleGoToSelectedFolder}
         onMove={handleMoveSelection}
@@ -1823,7 +2667,13 @@ export const ExplorerScreen = (): React.JSX.Element => {
           })}>
           <Trash2 color={theme.colors.danger} size={22} />
           <AppText style={{fontSize: theme.typography.body}} weight="semibold">
-            Kaldır
+            {selectedInstalledApp?.canUninstall === false
+              ? locale === 'en'
+                ? 'Cannot remove'
+                : 'Kaldırılamaz'
+              : locale === 'en'
+                ? 'Remove'
+                : 'Kaldır'}
           </AppText>
         </Pressable>
       </View>
@@ -1881,7 +2731,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
               backgroundColor: theme.colors.surface,
               padding: theme.spacing.md,
             }}>
-            <AppText weight="bold">Görünüm çeşidi</AppText>
+            <AppText weight="bold">{t('explorer.menu.viewMode')}</AppText>
             <View style={{marginTop: theme.spacing.sm, gap: theme.spacing.xs}}>
               {viewModes.map(modeOption => {
                 const isActive = viewMode === modeOption.id;
@@ -1892,7 +2742,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
                       <ViewModeGlyph color={theme.colors.primary} modeId={modeOption.id} />
-                      <AppText weight={isActive ? 'bold' : 'semibold'}>{modeOption.label}</AppText>
+                      <AppText weight={isActive ? 'bold' : 'semibold'}>
+                        {getViewModeLabel(modeOption.id)}
+                      </AppText>
                     </View>
                     {isActive ? <Check color={theme.colors.primary} size={16} /> : null}
                   </Pressable>
@@ -1901,7 +2753,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
             </View>
 
             <View style={{height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.sm}} />
-            <AppText weight="bold">Sırala</AppText>
+            <AppText weight="bold">{t('explorer.menu.sort')}</AppText>
             <View style={{marginTop: theme.spacing.sm, gap: theme.spacing.xs}}>
               {sortModes.map(modeOption => {
                 const isActive = sortModeId === modeOption.id;
@@ -1912,7 +2764,9 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
                       <SortModeGlyph color={theme.colors.primary} mode={modeOption} />
-                      <AppText weight={isActive ? 'bold' : 'semibold'}>{modeOption.label}</AppText>
+                      <AppText weight={isActive ? 'bold' : 'semibold'}>
+                        {getSortModeLabel(modeOption.id)}
+                      </AppText>
                     </View>
                     {isActive ? <Check color={theme.colors.primary} size={16} /> : null}
                   </Pressable>
@@ -1940,32 +2794,32 @@ export const ExplorerScreen = (): React.JSX.Element => {
               style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
                 <FilePlus2 color={theme.colors.primary} size={16} />
-                <AppText weight="semibold">Yeni</AppText>
+                <AppText weight="semibold">{t('explorer.menu.new')}</AppText>
               </View>
               <AppText tone="muted">{isCreateMenuOpen ? '−' : '+'}</AppText>
             </Pressable>
             {isCreateMenuOpen ? (
               <View style={{marginLeft: theme.spacing.md, marginBottom: theme.spacing.sm, gap: theme.spacing.xs}}>
                 <Pressable onPress={openCreateTextModal} style={{paddingVertical: theme.spacing.sm}}>
-                  <AppText>Metin Belgesi Oluştur</AppText>
+                  <AppText>{t('explorer.menu.newText')}</AppText>
                 </Pressable>
                 <Pressable onPress={openCreateFolderModal} style={{paddingVertical: theme.spacing.sm}}>
-                  <AppText>Klasör oluştur</AppText>
+                  <AppText>{t('explorer.menu.newFolder')}</AppText>
                 </Pressable>
               </View>
             ) : null}
             <Pressable onPress={handleOpenAnalysis} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm}}>
               <ImageIcon color={theme.colors.primary} size={16} />
-              <AppText weight="semibold">Analiz et</AppText>
+              <AppText weight="semibold">{t('explorer.menu.analyze')}</AppText>
             </Pressable>
             <Pressable onPress={handleRefreshCurrent} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm}}>
               <RefreshCcw color={theme.colors.primary} size={16} />
-              <AppText weight="semibold">Yenile</AppText>
+              <AppText weight="semibold">{t('explorer.menu.refresh')}</AppText>
             </Pressable>
             <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm}}>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
                 {showHiddenFiles ? <EyeOff color={theme.colors.primary} size={16} /> : <Eye color={theme.colors.primary} size={16} />}
-                <AppText weight="semibold">Gizli Dosya</AppText>
+                <AppText weight="semibold">{t('explorer.menu.hiddenFiles')}</AppText>
               </View>
               <Switch
                 onValueChange={handleToggleHiddenFiles}
@@ -1976,7 +2830,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
             </View>
             <Pressable onPress={handleOpenSettings} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm}}>
               <Settings color={theme.colors.primary} size={16} />
-              <AppText weight="semibold">Ayarlar</AppText>
+              <AppText weight="semibold">{t('explorer.menu.settings')}</AppText>
             </Pressable>
           </View>
         ) : null}
@@ -2002,7 +2856,8 @@ export const ExplorerScreen = (): React.JSX.Element => {
           </ScrollView>
         ) : isAppsView ? (
           <FlatList
-            key="apps-list"
+            key={isAppsGridView ? `apps-grid-${appGridColumns}` : 'apps-list'}
+            columnWrapperStyle={isAppsGridView ? {gap: theme.spacing.sm, marginBottom: theme.spacing.sm} : undefined}
             refreshControl={
               <RefreshControl
                 onRefresh={handleRefreshCurrent}
@@ -2016,7 +2871,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
               paddingBottom: contentBottomInset,
               flexGrow: 1,
             }}
-            data={installedApps}
+            data={sortedInstalledApps}
             keyExtractor={item => item.packageName}
             ListEmptyComponent={
               isAppsLoading ? (
@@ -2025,30 +2880,90 @@ export const ExplorerScreen = (): React.JSX.Element => {
                 </View>
               ) : (
                 <EmptyState
-                  title="Uygulama bulunamadı"
-                  description="Yüklü uygulamalar listesi şu anda boş görünüyor."
-                  supportingText="Yenileyip tekrar deneyebilirsiniz."
+                  title={t('explorer.empty.noAppsTitle')}
+                  description={t('explorer.empty.noAppsDescription')}
+                  supportingText={t('explorer.empty.noAppsSupporting')}
                   icon="apps"
                 />
               )
             }
-            renderItem={renderInstalledAppItem}
+            numColumns={isAppsGridView ? appGridColumns : 1}
+            renderItem={isAppsGridView ? renderInstalledAppGridItem : renderInstalledAppItem}
             showsVerticalScrollIndicator={false}
           />
+        ) : explorer.mode === 'placeholder' &&
+          explorer.placeholderView?.kind === 'social-groups' &&
+          socialExplorer ? (
+          renderSocialExplorer()
         ) : explorer.mode === 'placeholder' && explorer.placeholderView ? (
           <ScrollView
             contentContainerStyle={{paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: contentBottomInset}}
             showsVerticalScrollIndicator={false}>
-            <ExplorerPlaceholderView onBack={explorer.goBack} placeholder={explorer.placeholderView} providers={providers} />
+            <ExplorerPlaceholderView
+              onBack={explorer.goBack}
+              onProvidersChanged={hydrateProviders}
+              placeholder={explorer.placeholderView}
+              providers={providers}
+            />
           </ScrollView>
         ) : explorer.mode === 'preview' && explorer.previewNode ? (
           <ScrollView
             contentContainerStyle={{paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: contentBottomInset}}
             showsVerticalScrollIndicator={false}>
-            <FilePreviewView node={explorer.previewNode} onBack={explorer.goBack} />
+            <FilePreviewView
+              initialIndex={Math.max(
+                0,
+                filteredNodes.filter(isImageNode).findIndex(
+                  imageNode => imageNode.path === explorer.previewNode?.path,
+                ),
+              )}
+              node={explorer.previewNode}
+              onBack={explorer.goBack}
+              previewNodes={filteredNodes}
+            />
           </ScrollView>
         ) : isDocumentsRootView && documentSectionFilter == null ? (
           renderDocumentSections()
+        ) : isRecentFilesView ? (
+          <SectionList
+            contentContainerStyle={{
+              paddingHorizontal: theme.spacing.md,
+              paddingTop: theme.spacing.md,
+              paddingBottom: contentBottomInset,
+              flexGrow: 1,
+            }}
+            extraData={explorer.selectedNodeIds}
+            initialNumToRender={12}
+            keyExtractor={item => item.id}
+            ListEmptyComponent={emptyComponent}
+            refreshControl={
+              <RefreshControl
+                onRefresh={handleRefreshCurrent}
+                refreshing={isRefreshing}
+                tintColor={theme.colors.primary}
+              />
+            }
+            renderItem={renderListItem}
+            renderSectionFooter={() => <View style={{height: theme.spacing.md}} />}
+            renderSectionHeader={({section}) => (
+              <View
+                style={{
+                  paddingTop: theme.spacing.sm,
+                  paddingBottom: theme.spacing.xs,
+                  backgroundColor: theme.colors.background,
+                }}>
+                <AppText
+                  style={{fontSize: theme.typography.caption}}
+                  tone="muted"
+                  weight="semibold">
+                  {section.title}
+                </AppText>
+              </View>
+            )}
+            sections={recentSections}
+            showsVerticalScrollIndicator={false}
+            stickySectionHeadersEnabled={false}
+          />
         ) : (
           <FlatList
             key={`${explorer.currentPath}-${viewMode}`}
@@ -2095,32 +3010,30 @@ export const ExplorerScreen = (): React.JSX.Element => {
               paddingHorizontal: theme.spacing.lg,
             }}>
             <View style={{backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: theme.spacing.lg, gap: theme.spacing.md}}>
-              <AppText weight="bold">Silme işlemini onaylayın</AppText>
+              <AppText weight="bold">{t('explorer.modal.confirmDelete')}</AppText>
               <View>
-                <AppText weight="semibold">{primarySelectedNode ? primarySelectedNode.name : `${selectedNodes.length} öğe seçildi`}</AppText>
+                <AppText weight="semibold">
+                  {primarySelectedNode
+                    ? primarySelectedNode.name
+                    : t('selection.selectedCount', {count: selectedNodes.length})}
+                </AppText>
                 <AppText tone="muted" style={{fontSize: theme.typography.caption, marginTop: theme.spacing.xs}}>
                   {primarySelectedNode
                     ? `${getNodeSummary(primarySelectedNode)}  •  ${formatAbsoluteDate(primarySelectedNode.modifiedAt)}`
-                    : `${selectedNodes.length} öğe silinecek`}
+                    : locale === 'en'
+                      ? `${selectedNodes.length} items will be deleted`
+                      : `${selectedNodes.length} öğe silinecek`}
                 </AppText>
               </View>
-              <Pressable onPress={() => setDeletePermanently(currentValue => !currentValue)} style={{flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm}}>
-                <View style={{height: 22, width: 22, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: deletePermanently ? theme.colors.primary : theme.colors.surface, alignItems: 'center', justifyContent: 'center'}}>
-                  {deletePermanently ? <AppText style={{color: '#FFFFFF', fontSize: theme.typography.caption}} weight="bold">✓</AppText> : null}
-                </View>
-                <View style={{flex: 1}}>
-                  <AppText>Kalıcı olarak sil</AppText>
-                  <AppText tone="muted" style={{fontSize: theme.typography.caption, marginTop: theme.spacing.xs}}>
-                    Seçilmezse öğe geri dönüşüm kutusuna taşınır ve 30 gün içinde otomatik silinir.
-                  </AppText>
-                </View>
-              </Pressable>
+              <AppText tone="muted" style={{fontSize: theme.typography.caption}}>
+                {t('explorer.modal.trashInfo')}
+              </AppText>
               <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm}}>
                 <Pressable onPress={() => { setDeleteConfirmVisible(false); setDeletePermanently(false); }} style={{borderWidth: 1, borderColor: theme.colors.border, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm}}>
-                  <AppText weight="semibold">Vazgeç</AppText>
+                  <AppText weight="semibold">{t('common.cancel')}</AppText>
                 </Pressable>
                 <Pressable onPress={() => { void confirmDeleteSelection(); }} style={{backgroundColor: theme.colors.danger, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm}}>
-                  <AppText style={{color: '#FFFFFF'}} weight="semibold">Sil</AppText>
+                  <AppText style={{color: '#FFFFFF'}} weight="semibold">{t('explorer.modal.delete')}</AppText>
                 </Pressable>
               </View>
             </View>
@@ -2163,7 +3076,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     currentState ? {...currentState, value} : currentState,
                   )
                 }
-                placeholder="Ad girin"
+                placeholder={t('explorer.modal.enterName')}
                 placeholderTextColor={theme.colors.textMuted}
                 style={{
                   borderWidth: 1,
@@ -2187,7 +3100,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     paddingHorizontal: theme.spacing.md,
                     paddingVertical: theme.spacing.sm,
                   }}>
-                  <AppText>Vazgeç</AppText>
+                  <AppText>{t('common.cancel')}</AppText>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -2232,13 +3145,19 @@ export const ExplorerScreen = (): React.JSX.Element => {
               }}>
               <AppText>{recentContextNode.name}</AppText>
               <Pressable onPress={handleRemoveRecentNode} style={{paddingVertical: theme.spacing.sm}}>
-                <AppText>Listeden Kaldır</AppText>
+                <AppText>
+                  {locale === 'en' ? 'Remove from list' : 'Listeden Kaldır'}
+                </AppText>
               </Pressable>
               <Pressable onPress={handleOpenRecentNodeLocation} style={{paddingVertical: theme.spacing.sm}}>
-                <AppText>Dosya Konumuna Git</AppText>
+                <AppText>
+                  {locale === 'en' ? 'Open file location' : 'Dosya Konumuna Git'}
+                </AppText>
               </Pressable>
               <Pressable onPress={handleAddRecentNodeToFavorites} style={{paddingVertical: theme.spacing.sm}}>
-                <AppText>Favorilere Ekle</AppText>
+                <AppText>
+                  {locale === 'en' ? 'Add to favorites' : 'Favorilere Ekle'}
+                </AppText>
               </Pressable>
             </View>
           </View>

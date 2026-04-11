@@ -25,9 +25,11 @@ export interface InstalledApplicationInfo {
   packageName: string;
   label: string;
   sizeBytes: number;
+  installedAt: string;
   sourceDir: string;
   iconBase64?: string | null;
   isSystemApp: boolean;
+  canUninstall?: boolean;
 }
 
 export interface RemovableStorageDeviceInfo {
@@ -48,6 +50,42 @@ export interface FtpServerStatus {
   username: string;
   password: string;
   isRunning: boolean;
+}
+
+export interface PickedLocalFile {
+  path: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface NativeHttpTransferResult {
+  statusCode: number;
+  body: string;
+}
+
+export interface StorageAnalysisBreakdownItem {
+  label: string;
+  usedBytes: number;
+}
+
+export interface StorageAnalysisSegment {
+  label: string;
+  usedBytes: number;
+  breakdown: StorageAnalysisBreakdownItem[];
+}
+
+export interface StorageStats {
+  totalBytes: number;
+  availableBytes: number;
+  usedBytes: number;
+  downloadsSizeBytes: number;
+  rootPath: string;
+}
+
+export interface UninstallResult {
+  packageName: string;
+  status: 'uninstalled' | 'cancelled';
 }
 
 interface LocalFileSystemModuleShape {
@@ -91,7 +129,7 @@ interface LocalFileSystemModuleShape {
   listInstalledApps: (
     includeSystemApps: boolean,
   ) => Promise<InstalledApplicationInfo[]>;
-  uninstallPackage: (packageName: string) => Promise<boolean>;
+  uninstallPackage: (packageName: string) => Promise<UninstallResult>;
   exitApplication: () => Promise<boolean>;
   startMediaFile: (path: string) => Promise<MediaPlaybackStatus>;
   pauseMediaPlayback: () => Promise<MediaPlaybackStatus>;
@@ -101,16 +139,54 @@ interface LocalFileSystemModuleShape {
   getMediaPlaybackStatus: () => Promise<MediaPlaybackStatus>;
   startFtpServer: (includeHidden: boolean) => Promise<FtpServerStatus>;
   stopFtpServer: () => Promise<FtpServerStatus>;
+  pickLocalFile?: () => Promise<PickedLocalFile>;
+  downloadUrlToFile?: (
+    url: string,
+    headers: Record<string, string>,
+    destinationPath: string,
+  ) => Promise<string>;
+  uploadFileToUrl?: (
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    localPath: string,
+    bodyPrefix?: string,
+    bodySuffix?: string,
+  ) => Promise<NativeHttpTransferResult>;
   searchFilesByExtensions?: (
     path: string,
     extensions: string[],
     includeHidden: boolean,
   ) => Promise<NativeFileSystemNode[]>;
+  listFilesByCategory?: (
+    category: 'images' | 'video' | 'audio' | 'documents',
+    includeHidden: boolean,
+    limit: number,
+  ) => Promise<NativeFileSystemNode[]>;
+  listRecentFiles?: (
+    limit: number,
+    includeHidden: boolean,
+    sinceEpochMs?: number,
+  ) => Promise<NativeFileSystemNode[]>;
+  listKnownMediaFolders?: (
+    category: 'images' | 'video' | 'audio',
+    includeHidden: boolean,
+  ) => Promise<NativeFileSystemNode[]>;
+  listSocialMediaFiles?: (
+    appId: 'instagram' | 'whatsapp' | 'telegram',
+    accountId: string,
+    groupId: string,
+    includeHidden: boolean,
+    limit: number,
+  ) => Promise<NativeFileSystemNode[]>;
+  analyzeStorage?: () => Promise<StorageAnalysisSegment[]>;
+  getStorageStats?: () => Promise<StorageStats>;
 }
 
 const nativeModule = NativeModules.LocalFileSystemModule as
   | LocalFileSystemModuleShape
   | undefined;
+const ROOT_DIRECTORY_FALLBACK = '/storage/emulated/0';
 
 export class LocalFileSystemUnavailableError extends Error {
   constructor() {
@@ -219,6 +295,128 @@ export const localFileSystemBridge = {
       includeHidden,
     );
     return result.map(normalizeNode);
+  },
+
+  async listFilesByCategory(
+    category: 'images' | 'video' | 'audio' | 'documents',
+    includeHidden = false,
+    limit = 0,
+  ): Promise<NativeFileSystemNode[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.listFilesByCategory) {
+      const extensionMap = {
+        images: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic'],
+        video: ['mp4', 'mpeg', 'mpg', 'mkv', 'webm', 'mov', 'avi', '3gp', 'm4v'],
+        audio: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus', 'amr'],
+        documents: [
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'ods',
+          'txt',
+          'log',
+          'md',
+          'csv',
+          'rtf',
+          'odt',
+          'odf',
+          'ppt',
+          'pptx',
+        ],
+      } satisfies Record<typeof category, string[]>;
+      const nodes = await this.searchFilesByExtensions(
+        ROOT_DIRECTORY_FALLBACK,
+        extensionMap[category],
+        includeHidden,
+      );
+      return limit > 0 ? nodes.slice(0, limit) : nodes;
+    }
+
+    const result = await nativeModule.listFilesByCategory(
+      category,
+      includeHidden,
+      limit,
+    );
+    return result.map(normalizeNode);
+  },
+
+  async listRecentFiles(
+    limit = 15,
+    includeHidden = false,
+    sinceEpochMs = 0,
+  ): Promise<NativeFileSystemNode[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.listRecentFiles) {
+      const nodes = await this.searchDirectory(
+        ROOT_DIRECTORY_FALLBACK,
+        '.',
+        includeHidden,
+      );
+      return nodes
+        .filter(node => node.kind === 'file')
+        .sort(
+          (leftNode, rightNode) =>
+            new Date(rightNode.modifiedAt).getTime() -
+            new Date(leftNode.modifiedAt).getTime(),
+        )
+        .slice(0, limit);
+    }
+
+    const result = await nativeModule.listRecentFiles(
+      limit,
+      includeHidden,
+      sinceEpochMs,
+    );
+    return result.map(normalizeNode);
+  },
+
+  async listKnownMediaFolders(
+    category: 'images' | 'video' | 'audio',
+    includeHidden = false,
+  ): Promise<NativeFileSystemNode[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.listKnownMediaFolders) {
+      return [];
+    }
+
+    const result = await nativeModule.listKnownMediaFolders(category, includeHidden);
+    return result.map(normalizeNode);
+  },
+
+  async listSocialMediaFiles(
+    appId: 'instagram' | 'whatsapp' | 'telegram',
+    accountId: string,
+    groupId: string,
+    includeHidden = false,
+    limit = 0,
+  ): Promise<NativeFileSystemNode[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.listSocialMediaFiles) {
+      return [];
+    }
+
+    const result = await nativeModule.listSocialMediaFiles(
+      appId,
+      accountId,
+      groupId,
+      includeHidden,
+      limit,
+    );
+    return result.map(normalizeNode);
+  },
+
+  async analyzeStorage(): Promise<StorageAnalysisSegment[]> {
+    if (Platform.OS !== 'android' || !nativeModule?.analyzeStorage) {
+      return [];
+    }
+
+    return nativeModule.analyzeStorage();
+  },
+
+  async getStorageStats(): Promise<StorageStats> {
+    if (Platform.OS !== 'android' || !nativeModule?.getStorageStats) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.getStorageStats();
   },
 
   async writeTextFile(path: string, content: string): Promise<boolean> {
@@ -366,7 +564,7 @@ export const localFileSystemBridge = {
     return nativeModule.listInstalledApps(includeSystemApps);
   },
 
-  async uninstallPackage(packageName: string): Promise<boolean> {
+  async uninstallPackage(packageName: string): Promise<UninstallResult> {
     if (Platform.OS !== 'android' || !nativeModule) {
       throw new LocalFileSystemUnavailableError();
     }
@@ -444,5 +642,47 @@ export const localFileSystemBridge = {
     }
 
     return nativeModule.stopFtpServer();
+  },
+
+  async pickLocalFile(): Promise<PickedLocalFile> {
+    if (Platform.OS !== 'android' || !nativeModule?.pickLocalFile) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.pickLocalFile();
+  },
+
+  async downloadUrlToFile(
+    url: string,
+    headers: Record<string, string>,
+    destinationPath: string,
+  ): Promise<string> {
+    if (Platform.OS !== 'android' || !nativeModule?.downloadUrlToFile) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.downloadUrlToFile(url, headers, destinationPath);
+  },
+
+  async uploadFileToUrl(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    localPath: string,
+    bodyPrefix = '',
+    bodySuffix = '',
+  ): Promise<NativeHttpTransferResult> {
+    if (Platform.OS !== 'android' || !nativeModule?.uploadFileToUrl) {
+      throw new LocalFileSystemUnavailableError();
+    }
+
+    return nativeModule.uploadFileToUrl(
+      method,
+      url,
+      headers,
+      localPath,
+      bodyPrefix,
+      bodySuffix,
+    );
   },
 };

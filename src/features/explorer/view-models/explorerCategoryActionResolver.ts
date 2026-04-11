@@ -139,7 +139,7 @@ export const resolveExplorerCategoryAction = (
     ),
     images: directoryAction(
       'images',
-      `${ROOT_DIRECTORY}/Pictures`,
+      ROOT_DIRECTORY,
       createEmptyState(
         'Görüntü bulunmuyor',
         'Bu kaynakta henüz medya içeriği yok. Ekran görüntüleri ve fotoğraflar burada görünür.',
@@ -148,7 +148,7 @@ export const resolveExplorerCategoryAction = (
     ),
     audio: directoryAction(
       'audio',
-      `${ROOT_DIRECTORY}/Music`,
+      ROOT_DIRECTORY,
       createEmptyState(
         'Ses dosyası bulunmuyor',
         'Bu kaynakta henüz ses içeriği yok. Müzik ve kayıtlar burada listelenecek.',
@@ -157,7 +157,7 @@ export const resolveExplorerCategoryAction = (
     ),
     video: directoryAction(
       'video',
-      `${ROOT_DIRECTORY}/Movies`,
+      ROOT_DIRECTORY,
       createEmptyState(
         'Video bulunmuyor',
         'Bu kaynakta henüz video içeriği yok. Filmler ve klipler burada görünür.',
@@ -210,20 +210,6 @@ export const resolveExplorerCategoryAction = (
         'Sağlayıcıları görüntüle',
       ),
     },
-    remote: {
-      kind: 'placeholder',
-      placeholder: createPlaceholder(
-        'remote',
-        'remote-access',
-        'Uzak',
-        'Harici uzak kaynak bağlantıları için hazırlanan bilgi ekranı.',
-        [
-          'SFTP ve benzeri uç noktalar sonraki fazda bağlanacak.',
-          'Bu arayüz kullanıcının boş ekran görmesini engeller.',
-        ],
-        'Ana sayfaya dön',
-      ),
-    },
     network: {
       kind: 'placeholder',
       placeholder: createPlaceholder(
@@ -258,6 +244,33 @@ export const resolveExplorerCategoryAction = (
           'Uzun basınca kaldırma işlemi Android ekranına yönlendirilir.',
         ],
         'Ana sayfaya dön',
+      ),
+    },
+    whatsapp: {
+      kind: 'placeholder',
+      placeholder: createPlaceholder(
+        'social-whatsapp',
+        'social-groups',
+        'WhatsApp',
+        'WhatsApp içerikleri gruplar halinde listelenir.',
+      ),
+    },
+    telegram: {
+      kind: 'placeholder',
+      placeholder: createPlaceholder(
+        'social-telegram',
+        'social-groups',
+        'Telegram',
+        'Telegram içerikleri gruplar halinde listelenir.',
+      ),
+    },
+    instagram: {
+      kind: 'placeholder',
+      placeholder: createPlaceholder(
+        'social-instagram',
+        'social-groups',
+        'Instagram',
+        'Instagram içerikleri gruplar halinde listelenir.',
       ),
     },
   };

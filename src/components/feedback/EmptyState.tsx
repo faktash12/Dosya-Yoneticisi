@@ -43,7 +43,9 @@ const iconMap: Record<ExplorerEmptyStateIcon, typeof FolderOpen> = {
   apps: Package,
   recent: AppWindow,
   cloud: Cloud,
-  remote: Cloud,
+  whatsapp: AppWindow,
+  telegram: Cloud,
+  instagram: ImageIcon,
   network: Network,
   trash: Trash2,
 };

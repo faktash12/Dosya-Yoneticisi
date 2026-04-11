@@ -11,10 +11,10 @@ import {
   MonitorSmartphone,
   Network,
   Package,
-  RadioTower,
   Trash2,
   Usb,
   Video,
+  Music,
 } from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
@@ -29,23 +29,31 @@ interface ExplorerDashboardCardProps {
   onPress: (item: ExplorerDashboardItem) => void;
 }
 
-const iconMap: Record<ExplorerDashboardIcon, typeof HardDrive> = {
+type DashboardIconComponent = React.ComponentType<{color: string; size?: number}>;
+
+const iconMap: Record<ExplorerDashboardIcon, DashboardIconComponent> = {
   storage: HardDrive,
   'sd-card': HardDrive,
   usb: Usb,
   system: MonitorSmartphone,
   downloads: FolderArchive,
   images: ImageIcon,
-  audio: RadioTower,
+  audio: Music,
   video: Video,
   documents: FileText,
   apps: Package,
   recent: AppWindow,
   cloud: Cloud,
-  remote: Cloud,
+  whatsapp: AppWindow,
+  telegram: RadioTowerGlyph,
+  instagram: ImageIcon,
   network: Network,
   trash: Trash2,
 };
+
+function RadioTowerGlyph({color, size = 24}: {color: string; size?: number}) {
+  return <Music color={color} size={size} />;
+}
 
 export const ExplorerDashboardCard = ({
   item,

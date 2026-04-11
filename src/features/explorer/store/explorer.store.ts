@@ -3,13 +3,13 @@ import {create} from 'zustand';
 import {ROOT_DIRECTORY} from '@/constants/app';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import type {
+  ExplorerBrowserHistoryEntry,
   ExplorerCategoryId,
   ExplorerDirectoryContext,
   ExplorerEmptyStateConfig,
   ExplorerMode,
   ExplorerPlaceholderView,
 } from '@/features/explorer/types/explorer.types';
-import {getParentPath} from '@/utils/path';
 
 interface ClipboardState {
   mode: 'copy' | 'cut';
@@ -25,6 +25,9 @@ interface ExplorerState {
   selectedNodeIds: string[];
   activeDirectoryCategoryId: ExplorerCategoryId | null;
   activeEmptyState: ExplorerEmptyStateConfig | null;
+  logicalRootPath: string | null;
+  logicalRootLabel: string | null;
+  browserHistory: ExplorerBrowserHistoryEntry[];
   recentOpenedNodes: FileSystemNode[];
   // Deprecated: operation clipboard state is now managed by OperationClipboardService.
   clipboard: ClipboardState | null;
@@ -32,9 +35,14 @@ interface ExplorerState {
   reloadVersion: number;
   errorMessage: string | null;
   openHome: () => void;
-  openBrowser: (path: string, context?: ExplorerDirectoryContext | null) => void;
+  openBrowser: (
+    path: string,
+    context?: ExplorerDirectoryContext | null,
+    options?: {resetHistory?: boolean},
+  ) => void;
   openPlaceholder: (placeholderView: ExplorerPlaceholderView) => void;
   openPreview: (node: FileSystemNode) => void;
+  restorePreviousBrowser: () => void;
   setCurrentPath: (path: string) => void;
   setNodes: (nodes: FileSystemNode[]) => void;
   setLoading: (isLoading: boolean) => void;
@@ -60,6 +68,8 @@ const createDirectoryState = (
   selectedNodeIds: [],
   activeDirectoryCategoryId: context?.categoryId ?? null,
   activeEmptyState: context?.emptyState ?? null,
+  logicalRootPath: context?.logicalRootPath ?? null,
+  logicalRootLabel: context?.logicalRootLabel ?? null,
   errorMessage: null,
   isLoading: true,
 });
@@ -73,6 +83,9 @@ export const useExplorerStore = create<ExplorerState>(set => ({
   selectedNodeIds: [],
   activeDirectoryCategoryId: null,
   activeEmptyState: null,
+  logicalRootPath: null,
+  logicalRootLabel: null,
+  browserHistory: [],
   recentOpenedNodes: [],
   clipboard: null,
   isLoading: false,
@@ -88,10 +101,34 @@ export const useExplorerStore = create<ExplorerState>(set => ({
       selectedNodeIds: [],
       activeDirectoryCategoryId: null,
       activeEmptyState: null,
+      logicalRootPath: null,
+      logicalRootLabel: null,
+      browserHistory: [],
       errorMessage: null,
       isLoading: false,
     }),
-  openBrowser: (currentPath, context) => set(createDirectoryState(currentPath, context)),
+  openBrowser: (currentPath, context, options) =>
+    set(state => {
+      const nextState = createDirectoryState(currentPath, context);
+      const nextEntry: ExplorerBrowserHistoryEntry = {
+        path: currentPath,
+        context: context ?? null,
+      };
+
+      const browserHistory =
+        options?.resetHistory || state.mode !== 'browser'
+          ? [nextEntry]
+          : state.browserHistory.length === 0
+            ? [nextEntry]
+            : state.browserHistory.at(-1)?.path === currentPath
+              ? state.browserHistory
+              : [...state.browserHistory, nextEntry];
+
+      return {
+        ...nextState,
+        browserHistory,
+      };
+    }),
   openPlaceholder: placeholderView =>
     set(state => ({
       mode: 'placeholder',
@@ -100,24 +137,57 @@ export const useExplorerStore = create<ExplorerState>(set => ({
       selectedNodeIds: [],
       activeDirectoryCategoryId: state.activeDirectoryCategoryId,
       activeEmptyState: state.activeEmptyState,
+      logicalRootPath: state.logicalRootPath,
+      logicalRootLabel: state.logicalRootLabel,
       errorMessage: null,
       isLoading: false,
     })),
   openPreview: previewNode =>
     set(state => ({
       mode: 'preview',
-      currentPath:
-        previewNode.kind === 'file'
-          ? getParentPath(previewNode.path)
-          : state.currentPath,
+      currentPath: state.currentPath,
       previewNode,
       placeholderView: null,
       selectedNodeIds: [],
       activeDirectoryCategoryId: state.activeDirectoryCategoryId,
       activeEmptyState: state.activeEmptyState,
+      logicalRootPath: state.logicalRootPath,
+      logicalRootLabel: state.logicalRootLabel,
       errorMessage: null,
       isLoading: false,
     })),
+  restorePreviousBrowser: () =>
+    set(state => {
+      if (state.browserHistory.length <= 1) {
+        return {
+          mode: 'home' as const,
+          currentPath: ROOT_DIRECTORY,
+          placeholderView: null,
+          previewNode: null,
+          nodes: [],
+          selectedNodeIds: [],
+          activeDirectoryCategoryId: null,
+          activeEmptyState: null,
+          logicalRootPath: null,
+          logicalRootLabel: null,
+          browserHistory: [],
+          errorMessage: null,
+          isLoading: false,
+        };
+      }
+
+      const browserHistory = state.browserHistory.slice(0, -1);
+      const previousEntry = browserHistory.at(-1);
+
+      if (!previousEntry) {
+        return state;
+      }
+
+      return {
+        ...createDirectoryState(previousEntry.path, previousEntry.context),
+        browserHistory,
+      };
+    }),
   setCurrentPath: currentPath => set(createDirectoryState(currentPath)),
   setNodes: nodes => set({nodes}),
   setLoading: isLoading => set({isLoading}),

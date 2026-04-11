@@ -54,6 +54,21 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="${oauthScheme}" android:host="${oauthHost}" android:pathPrefix="/google_drive" />
+            <data android:scheme="${oauthScheme}" android:host="${oauthHost}" android:pathPrefix="/yandex_disk" />
+            <data android:scheme="${oauthScheme}" android:host="${oauthHost}" android:pathPrefix="/onedrive" />
+            <data android:scheme="${oauthScheme}" android:host="${oauthHost}" android:pathPrefix="/dropbox" />
+        </intent-filter>
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="${googleDriveAuthScheme}" android:pathPrefix="/oauth2redirect" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>
