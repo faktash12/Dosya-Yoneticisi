@@ -1,12 +1,13 @@
 import React, {memo} from 'react';
 import {TouchableOpacity, View} from 'react-native';
-import {Check, ChevronRight, File, Folder} from 'lucide-react-native';
+import {Check, ChevronRight} from 'lucide-react-native';
 
 import {AppText} from '@/components/common/AppText';
 import type {FileSystemNode} from '@/domain/entities/FileSystemNode';
 import {useAppTheme} from '@/hooks/useAppTheme';
 import {formatBytes} from '@/utils/formatBytes';
 import {formatAbsoluteDateTime} from '@/utils/formatAbsoluteDate';
+import {renderNodeTypeIcon} from '@/features/explorer/utils/fileTypeIcons';
 
 interface FileListItemProps {
   node: FileSystemNode;
@@ -56,11 +57,11 @@ const FileListItemComponent = ({
           paddingHorizontal: isCompact ? theme.spacing.sm : theme.spacing.md,
           paddingVertical: isCompact ? theme.spacing.sm : theme.spacing.md,
         }}>
-        {isDirectory ? (
-          <Folder color={theme.colors.text} size={isCompact ? 18 : 20} />
-        ) : (
-          <File color={theme.colors.primary} size={isCompact ? 18 : 20} />
-        )}
+        {renderNodeTypeIcon(node, {
+          size: isCompact ? 18 : 20,
+          directoryColor: theme.colors.text,
+          fileColor: theme.colors.primary,
+        })}
       </View>
 
       <View style={{flex: 1, paddingRight: theme.spacing.md}}>

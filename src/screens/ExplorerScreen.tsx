@@ -77,9 +77,12 @@ import {
 } from '@/services/platform/StoragePermissionBridge';
 import {
   isArchiveNode,
+  isApkNode,
   isImageNode,
   isVideoNode,
 } from '@/features/explorer/utils/mediaClassification';
+import {renderNodeTypeIcon} from '@/features/explorer/utils/fileTypeIcons';
+import {shouldIncludeRecentNode} from '@/features/explorer/utils/recentFileRules';
 import {groupRecentNodesByDay} from '@/features/explorer/utils/recentSections';
 import {formatAbsoluteDate} from '@/utils/formatAbsoluteDate';
 import {formatBytes} from '@/utils/formatBytes';
@@ -639,16 +642,23 @@ export const ExplorerScreen = (): React.JSX.Element => {
     const normalizedQuery = debouncedSearchQuery.trim().toLocaleLowerCase('tr-TR');
     return sectionFilteredNodes.filter(node => node.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery));
   }, [debouncedSearchQuery, explorer.mode, searchResults, sectionFilteredNodes]);
+  const visibleRecentNodes = useMemo(
+    () =>
+      isRecentFilesView
+        ? filteredNodes.filter(shouldIncludeRecentNode)
+        : filteredNodes,
+    [filteredNodes, isRecentFilesView],
+  );
   const recentSections = useMemo(
     () =>
       groupRecentNodesByDay(
-        [...filteredNodes].sort(
+        [...visibleRecentNodes].sort(
           (leftNode, rightNode) =>
             new Date(rightNode.modifiedAt).getTime() -
             new Date(leftNode.modifiedAt).getTime(),
         ),
       ),
-    [filteredNodes],
+    [visibleRecentNodes],
   );
   const selectedInstalledApp = useMemo(
     () =>
@@ -2063,6 +2073,7 @@ export const ExplorerScreen = (): React.JSX.Element => {
         (viewMode === 'large-icons' || isMediaFolderGrid) && isImageNode(item);
       const shouldShowVideoPreview =
         (viewMode === 'large-icons' || isMediaFolderGrid) && isVideoNode(item);
+      const isApkFile = isApkNode(item);
 
       return (
         <Pressable
@@ -2113,13 +2124,29 @@ export const ExplorerScreen = (): React.JSX.Element => {
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                  <AppText style={{fontSize: 10, color: theme.colors.primary}}>▶</AppText>
+                    <AppText style={{fontSize: 10, color: theme.colors.primary}}>▶</AppText>
                 </View>
               </View>
-            ) : isDirectory ? (
-              <Folder color={theme.colors.text} size={isMediaFolderGrid || viewMode === 'large-icons' ? 26 : 20} />
             ) : (
-              <ImageIcon color={theme.colors.primary} size={isMediaFolderGrid || viewMode === 'large-icons' ? 26 : 20} />
+              <View style={{alignItems: 'center', justifyContent: 'center'}}>
+                {renderNodeTypeIcon(item, {
+                  size: isMediaFolderGrid || viewMode === 'large-icons' ? 26 : 20,
+                  directoryColor: theme.colors.text,
+                  fileColor: theme.colors.primary,
+                })}
+                {isApkFile ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: -8,
+                      paddingHorizontal: 4,
+                      paddingVertical: 1,
+                      backgroundColor: 'rgba(255,255,255,0.9)',
+                    }}>
+                    <AppText style={{fontSize: 9, color: theme.colors.primary}}>APK</AppText>
+                  </View>
+                ) : null}
+              </View>
             )}
           </View>
           <AppText

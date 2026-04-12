@@ -1,4 +1,5 @@
 import {NativeModules, Platform} from 'react-native';
+import {shouldIncludeRecentNode} from '@/features/explorer/utils/recentFileRules';
 
 interface NativeFilePermissions {
   canRead: boolean;
@@ -353,7 +354,12 @@ export const localFileSystemBridge = {
         includeHidden,
       );
       return nodes
-        .filter(node => node.kind === 'file')
+        .filter(node => shouldIncludeRecentNode(node))
+        .filter(
+          node =>
+            sinceEpochMs <= 0 ||
+            new Date(node.modifiedAt).getTime() >= sinceEpochMs,
+        )
         .sort(
           (leftNode, rightNode) =>
             new Date(rightNode.modifiedAt).getTime() -

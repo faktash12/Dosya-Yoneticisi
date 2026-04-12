@@ -288,6 +288,8 @@ class LocalFileSystemModule(
           includeHidden,
           limit,
           sinceEpochMs.toLong(),
+          emptySet(),
+          setOf("tmp"),
         ),
       )
     } catch (error: Exception) {
@@ -1563,6 +1565,7 @@ class LocalFileSystemModule(
     limit: Int,
     sinceEpochMs: Long = 0L,
     mimePrefixes: Set<String> = emptySet(),
+    excludedExtensions: Set<String> = emptySet(),
   ): com.facebook.react.bridge.WritableArray {
     val results = Arguments.createArray()
     val uri = MediaStore.Files.getContentUri("external")
@@ -1607,6 +1610,9 @@ class LocalFileSystemModule(
           continue
         }
         val normalizedExtension = file.extension.lowercase(Locale.ROOT)
+        if (excludedExtensions.contains(normalizedExtension)) {
+          continue
+        }
         val matchesExtension =
           extensions.isEmpty() || extensions.contains(normalizedExtension)
         val matchesMimeType =
